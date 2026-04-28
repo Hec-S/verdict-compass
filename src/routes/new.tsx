@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { UploadZone } from "@/components/verdict/UploadZone";
 import { extractPdfText, combineAndCap, MAX_CHARS } from "@/lib/pdf-extract";
 import { submitAnalysis, AnalysisFailedError } from "@/lib/analyze-client";
+import { saveClientTrace, type ClientTraceEvent } from "@/lib/debug-trace";
 
 export const Route = createFileRoute("/new")({
   head: () => ({
@@ -61,7 +62,40 @@ function NewAnalysisPage() {
     try {
       const extracted = await Promise.all(files.map((f) => extractPdfText(f)));
       const { text } = combineAndCap(extracted);
+      const traceEvents: ClientTraceEvent[] = [];
+      const log = (stage: string, data: Record<string, unknown>) => {
+        const ev = { ts: new Date().toISOString(), stage, data };
+        traceEvents.push(ev);
+        try {
+          console.log(
+            `===== STAGE: ${stage} =====\n` + JSON.stringify(data, null, 2),
+          );
+        } catch {
+          console.log(`===== STAGE: ${stage} ===== (unserializable)`);
+        }
+      };
+      log("client_pdf_files", {
+        caseName: caseName.trim(),
+        files: files.map((f) => ({ name: f.name, sizeBytes: f.size })),
+      });
+      for (const part of extracted) {
+        log("client_pdf_extracted", {
+          name: part.name,
+          pages: part.pages,
+          totalLength: part.text.length,
+          first2000: part.text.slice(0, 2000),
+          last2000: part.text.slice(-2000),
+        });
+      }
+      log("client_combined_capped", {
+        totalLength: text.length,
+        cap: MAX_CHARS,
+        first2000: text.slice(0, 2000),
+        last2000: text.slice(-2000),
+      });
       const jobId = await submitAnalysis(caseName.trim(), text);
+      log("client_submitted", { jobId });
+      saveClientTrace(jobId, traceEvents);
       navigate({ to: "/analyzing/$jobId", params: { jobId } });
     } catch (e) {
       console.error(e);
