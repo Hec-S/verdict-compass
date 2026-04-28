@@ -134,7 +134,12 @@ function MatterDetailPage() {
 
   useEffect(() => {
     if (!latestSynthesis) return;
-    if (latestSynthesis.status === "complete" || latestSynthesis.status === "error") return;
+    if (
+      latestSynthesis.status === "complete" ||
+      latestSynthesis.status === "complete_with_errors" ||
+      latestSynthesis.status === "error"
+    )
+      return;
     let cancelled = false;
     const interval = setInterval(async () => {
       try {
