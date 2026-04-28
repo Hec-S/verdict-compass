@@ -498,55 +498,16 @@ function MatterDetailPage() {
                 </button>
               </div>
 
-              {synthRunning && (
-                <div className="mb-6 border border-border p-4">
-                  <p className="text-[13px] text-foreground mb-2">
-                    {synthMessage || "Working…"}
-                  </p>
-                  <Progress value={synthProgress} />
-                </div>
-              )}
-              {!synthRunning && !synthError && latestSynthesis &&
-                latestSynthesis.status !== "complete" &&
-                latestSynthesis.status !== "complete_with_errors" &&
-                latestSynthesis.status !== "error" && (
-                  <div className="mb-6 border border-border p-4">
-                    <p className="text-[13px] text-foreground mb-2">
-                      {latestSynthesis.progressMessage ?? "Preparing…"}
-                    </p>
-                    <Progress value={latestSynthesis.progress} />
-                  </div>
-                )}
-              {synthError && !synthRunning && (
-                <div className="mb-6 border border-destructive/30 p-4">
-                  <p className="text-[13px] text-destructive mb-3">{synthError}</p>
-                  {latestSynthesis?.status === "error" && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmRetry(true)}
-                      disabled={retryingSynthesis}
-                      className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {retryingSynthesis ? "Retrying…" : "Retry synthesis"}
-                    </button>
-                  )}
-                </div>
-              )}
-              {!synthRunning && !synthError && latestSynthesis?.status === "error" && (
-                <div className="mb-6 border border-destructive/30 p-4">
-                  <p className="text-[13px] text-destructive mb-3">
-                    {latestSynthesis.error ?? "Synthesis failed."}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmRetry(true)}
-                    disabled={retryingSynthesis}
-                    className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {retryingSynthesis ? "Retrying…" : "Retry synthesis"}
-                  </button>
-                </div>
-              )}
+              <SynthesisStatusBanner
+                synthRunning={synthRunning}
+                synthProgress={synthProgress}
+                synthMessage={synthMessage}
+                latestSynthesis={latestSynthesis}
+                retryingSynthesis={retryingSynthesis}
+                onRetry={() => setConfirmRetry(true)}
+                onRerunFailed={() => void rerunFailedSubCalls()}
+                onRerunAll={() => setConfirmRetry(true)}
+              />
 
               {/* Cases list */}
               <CaseRowList
@@ -554,6 +515,47 @@ function MatterDetailPage() {
                 matters={otherMatters}
                 onChange={(next) => setCases(next)}
               />
+
+              {/* Inline synthesis report */}
+              {latestSynthesis &&
+                (latestSynthesis.status === "complete" ||
+                  latestSynthesis.status === "complete_with_errors") &&
+                latestSynthesis.result && (
+                  <div className="mt-10 pt-8 border-t border-border">
+                    <div className="mb-4 flex items-baseline justify-between gap-4">
+                      <h2 className="text-[16px] font-medium tracking-[-0.01em]">
+                        Matter Synthesis
+                      </h2>
+                      <Link
+                        to="/matter/$matterId/synthesis/$synthesisId"
+                        params={{
+                          matterId: matter.id,
+                          synthesisId: latestSynthesis.id,
+                        }}
+                        className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Open full report ›
+                      </Link>
+                    </div>
+                    <MatterSynthesisView
+                      synthesis={latestSynthesis.result}
+                      caseLabels={
+                        new Map(
+                          cases.map((c) => [
+                            c.id,
+                            c.snapshot?.caseName || c.caseName || c.id.slice(0, 8),
+                          ]),
+                        )
+                      }
+                      failedSubCallKeys={latestSynthesis.failedSections.map(
+                        (f) => f.section,
+                      )}
+                      onRerun={() => setConfirmRetry(true)}
+                      onRerunFailed={() => void rerunFailedSubCalls()}
+                      rerunDisabled={retryingSynthesis || synthRunning}
+                    />
+                  </div>
+                )}
             </>
           )}
         </section>
