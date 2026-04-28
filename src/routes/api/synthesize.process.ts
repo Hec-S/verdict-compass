@@ -570,12 +570,25 @@ export async function synthesizeMatter(
   matter: MatterRow,
   cards: DepositionCard[],
   onProgress?: (p: { progress: number; message: string }) => Promise<void>,
-): Promise<{ result: CaseSynthesis; failedSections: string[]; successCount: number }> {
+  onlyKeys?: string[],
+): Promise<{
+  result: CaseSynthesis;
+  failedSections: FailedSection[];
+  successCount: number;
+  attemptedKeys: string[];
+  succeededKeys: string[];
+}> {
   const merged: Record<string, unknown> = {};
-  const failedSections: string[] = [];
+  const failedSections: FailedSection[] = [];
   let successCount = 0;
+  const attemptedKeys: string[] = [];
+  const succeededKeys: string[] = [];
+  const subset = onlyKeys && onlyKeys.length > 0
+    ? SUB_CALLS.filter((s) => onlyKeys.includes(s.key))
+    : SUB_CALLS;
 
-  for (const sub of SUB_CALLS) {
+  for (const sub of subset) {
+    attemptedKeys.push(sub.key);
     if (onProgress) {
       await onProgress({ progress: sub.progress, message: sub.message });
     }
@@ -584,19 +597,27 @@ export async function synthesizeMatter(
       if (part && Object.keys(part).length > 0) {
         Object.assign(merged, part);
         successCount += 1;
+        succeededKeys.push(sub.key);
       } else {
-        failedSections.push(sub.label);
+        failedSections.push({
+          section: sub.key,
+          error: "Sub-call returned an empty response (likely JSON parse failure).",
+        });
       }
     } catch (err) {
-      console.error(
-        `[synthesize.process] sub:${sub.key} failed:`,
-        err instanceof Error ? err.message : String(err),
-      );
-      failedSections.push(sub.label);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[synthesize.process] sub:${sub.key} failed:`, message);
+      failedSections.push({ section: sub.key, error: message });
     }
   }
 
-  return { result: mergeSynthesis(matter, merged), failedSections, successCount };
+  return {
+    result: mergeSynthesis(matter, merged),
+    failedSections,
+    successCount,
+    attemptedKeys,
+    succeededKeys,
+  };
 }
 
 async function updateSynthesis(
