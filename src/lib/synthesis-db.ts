@@ -11,6 +11,7 @@ function rowToSynthesis(r: {
   progress: number;
   progress_message: string | null;
   error: string | null;
+  failed_sections?: unknown;
 }): MatterSynthesisRow {
   return {
     id: r.id,
@@ -22,6 +23,9 @@ function rowToSynthesis(r: {
     progress: r.progress ?? 0,
     progressMessage: r.progress_message,
     error: r.error,
+    failedSections: Array.isArray(r.failed_sections)
+      ? (r.failed_sections as string[])
+      : [],
   };
 }
 
@@ -31,7 +35,7 @@ export async function getSynthesisFromDb(
   const { data, error } = await supabase
     .from("matter_syntheses")
     .select(
-      "id, matter_id, result, case_ids, created_at, status, progress, progress_message, error",
+      "id, matter_id, result, case_ids, created_at, status, progress, progress_message, error, failed_sections",
     )
     .eq("id", id)
     .maybeSingle();
@@ -46,7 +50,7 @@ export async function getLatestSynthesisForMatter(
   const { data, error } = await supabase
     .from("matter_syntheses")
     .select(
-      "id, matter_id, result, case_ids, created_at, status, progress, progress_message, error",
+      "id, matter_id, result, case_ids, created_at, status, progress, progress_message, error, failed_sections",
     )
     .eq("matter_id", matterId)
     .order("created_at", { ascending: false })
