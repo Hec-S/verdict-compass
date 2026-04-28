@@ -7,9 +7,17 @@ interface Props {
   defaultOpen?: boolean;
   children: ReactNode;
   missing?: boolean;
+  emptyMessage?: string;
 }
 
-export function Panel({ title, count, defaultOpen = false, children, missing = false }: Props) {
+export function Panel({
+  title,
+  count,
+  defaultOpen = false,
+  children,
+  missing = false,
+  emptyMessage = "No items.",
+}: Props) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section className="border-b border-border">
@@ -29,7 +37,7 @@ export function Panel({ title, count, defaultOpen = false, children, missing = f
       {open && (
         <div className="pb-6 pt-1 px-1">
           {missing ? (
-            <p className="text-[13px] text-muted-foreground py-2">No items.</p>
+            <p className="text-[13px] text-muted-foreground py-2">{emptyMessage}</p>
           ) : (
             children
           )}
