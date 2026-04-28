@@ -1,14 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Trash2, Check, X } from "lucide-react";
+import { Pencil, Trash2, Check, X, FolderOpen, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import {
-  listCasesFromDb,
-  updateCaseNameInDb,
-  deleteCaseFromDb,
-  type CaseListRow,
-} from "@/lib/cases-db";
+  listMattersFromDb,
+  countUnfiledCasesFromDb,
+  createMatterInDb,
+  updateMatterInDb,
+  deleteMatterFromDb,
+  type MatterWithCount,
+} from "@/lib/matters-db";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,36 +21,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Cases — VerdictIQ" },
+      { title: "Matters — VerdictIQ" },
       {
         name: "description",
         content:
-          "Your library of analyzed litigation transcripts — open, review, or start a new analysis.",
+          "Your litigation matters — group depositions, transcripts, and analyses under a single engagement.",
       },
     ],
   }),
-  component: CasesDashboard,
+  component: MattersDashboard,
 });
-
-function outcomeTone(outcome: string | null): "positive" | "negative" | "neutral" {
-  if (!outcome) return "neutral";
-  const v = outcome.toLowerCase();
-  if (/(defense|defendant)\s*(verdict|win)/.test(v) || /dismiss|directed verdict|take[- ]?nothing/.test(v))
-    return "positive";
-  if (/(plaintiff)\s*(verdict|win)/.test(v) || /judgment for plaintiff|award|damages/.test(v))
-    return "negative";
-  return "neutral";
-}
-
-const toneBar: Record<"positive" | "negative" | "neutral", string> = {
-  positive: "before:bg-success",
-  negative: "before:bg-destructive",
-  neutral: "before:bg-border",
-};
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString("en-US", {
@@ -58,32 +52,40 @@ function formatDate(ts: number): string {
   });
 }
 
-function CasesDashboard() {
-  const [cases, setCases] = useState<CaseListRow[] | null>(null);
+function MattersDashboard() {
+  const [matters, setMatters] = useState<MatterWithCount[] | null>(null);
+  const [unfiledCount, setUnfiledCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<CaseListRow | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    listCasesFromDb()
-      .then((rows) => {
-        if (!cancelled) setCases(rows);
+  const [deleteTarget, setDeleteTarget] = useState<MatterWithCount | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newError, setNewError] = useState<string | null>(null);
+  const [submittingNew, setSubmittingNew] = useState(false);
+
+  function reload() {
+    Promise.all([listMattersFromDb(), countUnfiledCasesFromDb()])
+      .then(([m, u]) => {
+        setMatters(m);
+        setUnfiledCount(u);
       })
       .catch((e) => {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load cases.");
-          setCases([]);
-        }
+        setError(e instanceof Error ? e.message : "Failed to load matters.");
+        setMatters([]);
       });
-    return () => {
-      cancelled = true;
-    };
+  }
+
+  useEffect(() => {
+    reload();
   }, []);
 
   useEffect(() => {
@@ -93,38 +95,36 @@ function CasesDashboard() {
     }
   }, [editingId]);
 
-  function startEdit(c: CaseListRow) {
-    setEditingId(c.id);
-    setEditValue(c.caseName || c.snapshot?.caseName || "");
+  function startEdit(m: MatterWithCount) {
+    setEditingId(m.id);
+    setEditValue(m.name);
     setEditError(null);
   }
-
   function cancelEdit() {
     setEditingId(null);
     setEditValue("");
     setEditError(null);
   }
-
-  async function saveEdit(c: CaseListRow) {
+  async function saveEdit(m: MatterWithCount) {
     const trimmed = editValue.trim();
     if (trimmed.length < 1 || trimmed.length > 300) {
       setEditError("Name must be 1–300 characters.");
       return;
     }
-    const previous = c.caseName;
-    setSavingId(c.id);
-    setCases((prev) =>
-      prev ? prev.map((row) => (row.id === c.id ? { ...row, caseName: trimmed } : row)) : prev,
+    const previous = m.name;
+    setSavingId(m.id);
+    setMatters((prev) =>
+      prev ? prev.map((row) => (row.id === m.id ? { ...row, name: trimmed } : row)) : prev,
     );
     setEditingId(null);
     setEditError(null);
     try {
-      await updateCaseNameInDb(c.id, trimmed);
+      await updateMatterInDb(m.id, { name: trimmed });
     } catch (e) {
-      setCases((prev) =>
-        prev ? prev.map((row) => (row.id === c.id ? { ...row, caseName: previous } : row)) : prev,
+      setMatters((prev) =>
+        prev ? prev.map((row) => (row.id === m.id ? { ...row, name: previous } : row)) : prev,
       );
-      toast.error(e instanceof Error ? e.message : "Failed to update name.");
+      toast.error(e instanceof Error ? e.message : "Failed to update matter.");
     } finally {
       setSavingId(null);
     }
@@ -133,18 +133,42 @@ function CasesDashboard() {
   async function confirmDelete() {
     if (!deleteTarget) return;
     const target = deleteTarget;
-    const snapshot = cases;
+    const snapshot = matters;
+    const unfiledBefore = unfiledCount;
     setDeleting(true);
-    setCases((prev) => (prev ? prev.filter((row) => row.id !== target.id) : prev));
+    setMatters((prev) => (prev ? prev.filter((row) => row.id !== target.id) : prev));
+    setUnfiledCount(unfiledBefore + target.caseCount);
     try {
-      await deleteCaseFromDb(target.id);
-      toast.success("Case deleted.");
+      await deleteMatterFromDb(target.id);
+      toast.success("Matter deleted. Cases unfiled.");
       setDeleteTarget(null);
     } catch (e) {
-      setCases(snapshot);
-      toast.error(e instanceof Error ? e.message : "Failed to delete case.");
+      setMatters(snapshot);
+      setUnfiledCount(unfiledBefore);
+      toast.error(e instanceof Error ? e.message : "Failed to delete matter.");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function submitNewMatter() {
+    const trimmed = newName.trim();
+    if (trimmed.length < 1 || trimmed.length > 300) {
+      setNewError("Name must be 1–300 characters.");
+      return;
+    }
+    setSubmittingNew(true);
+    try {
+      const created = await createMatterInDb(trimmed, newDesc);
+      setMatters((prev) => [{ ...created, caseCount: 0 }, ...(prev ?? [])]);
+      setCreating(false);
+      setNewName("");
+      setNewDesc("");
+      setNewError(null);
+    } catch (e) {
+      setNewError(e instanceof Error ? e.message : "Failed to create matter.");
+    } finally {
+      setSubmittingNew(false);
     }
   }
 
@@ -154,154 +178,172 @@ function CasesDashboard() {
       <main className="flex-1">
         <section className="max-w-[880px] mx-auto px-8 pt-10">
           <div className="flex items-center justify-between">
-            <h1 className="text-[18px] font-medium tracking-[-0.01em]">Cases</h1>
-            <Link
-              to="/new"
-              className="inline-flex items-center h-8 px-3 text-[13px] font-normal text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors"
-            >
-              New analysis
-            </Link>
+            <h1 className="text-[18px] font-medium tracking-[-0.01em]">Matters</h1>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setNewError(null);
+                  setNewName("");
+                  setNewDesc("");
+                  setCreating(true);
+                }}
+                className="inline-flex items-center h-8 px-3 text-[13px] font-normal text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors"
+              >
+                New matter
+              </button>
+              <Link
+                to="/new"
+                className="inline-flex items-center h-8 px-3 text-[13px] font-normal text-background bg-foreground border border-foreground hover:opacity-90 transition-opacity"
+              >
+                New analysis
+              </Link>
+            </div>
           </div>
         </section>
 
         <section className="max-w-[880px] mx-auto px-8 pt-8 pb-24">
-          {cases === null && (
+          {matters === null && (
             <p className="text-[13px] text-muted-foreground py-8">Loading…</p>
           )}
 
-          {cases && cases.length === 0 && (
-            <div className="border-t border-border pt-24 flex flex-col items-center text-center">
-              <p className="text-[14px] text-muted-foreground mb-6">
-                {error ?? "No cases yet."}
-              </p>
-              <Link
-                to="/new"
-                className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors"
-              >
-                Analyze your first transcript
-              </Link>
-            </div>
-          )}
+          {matters && (
+            <ul className="border-t border-border">
+              <li className="border-b border-border">
+                <Link
+                  to="/unfiled"
+                  className="relative flex items-center gap-4 h-12 px-1 hover:bg-foreground/[0.02] transition-colors"
+                  aria-label="Open unfiled cases"
+                >
+                  <span className="flex items-center gap-2 flex-[0_0_55%] min-w-0">
+                    <Inbox className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-[14px] font-medium text-foreground truncate">
+                      Unfiled cases
+                    </span>
+                  </span>
+                  <span className="flex-1 text-[13px] text-muted-foreground truncate">
+                    Cases not yet assigned to a matter
+                  </span>
+                  <span className="text-[12px] text-muted-foreground tabular-nums">
+                    {unfiledCount} {unfiledCount === 1 ? "case" : "cases"}
+                  </span>
+                </Link>
+              </li>
 
-          {cases && cases.length > 0 && (
-            <>
-              <p className="text-[12px] text-muted-foreground mb-3">
-                Showing {cases.length} {cases.length === 1 ? "case" : "cases"}
-              </p>
-              <ul className="border-t border-border">
-                {cases.map((c) => {
-                  const tone = outcomeTone(c.outcome);
-                  const parties =
-                    c.snapshot?.plaintiff && c.snapshot?.defendant
-                      ? `${c.snapshot.plaintiff} v. ${c.snapshot.defendant}`
-                      : "";
-                  const isEditing = editingId === c.id;
-                  return (
-                    <li key={c.id} className="border-b border-border">
-                      <div className="relative flex items-center gap-4 h-12 px-1 hover:bg-foreground/[0.02] transition-colors">
-                        {!isEditing && (
-                          <Link
-                            to="/case/$id"
-                            params={{ id: c.id }}
-                            aria-label={`Open ${c.caseName || "case"}`}
-                            className="absolute inset-0"
-                          />
-                        )}
-                        <span className="relative flex-[0_0_45%] min-w-0 text-[14px] font-medium text-foreground truncate">
-                          {isEditing ? (
-                            <span className="flex flex-col gap-1">
-                              <span className="flex items-center gap-2">
-                                <input
-                                  ref={inputRef}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      saveEdit(c);
-                                    } else if (e.key === "Escape") {
-                                      e.preventDefault();
-                                      cancelEdit();
-                                    }
-                                  }}
-                                  maxLength={300}
-                                  aria-label="Case name"
-                                  aria-invalid={!!editError}
-                                  className="flex-1 min-w-0 h-7 px-2 text-[13px] font-normal bg-background border border-border focus:outline-none focus:border-foreground/60"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => saveEdit(c)}
-                                  disabled={savingId === c.id}
-                                  aria-label="Save name"
-                                  className="inline-flex items-center justify-center h-7 w-7 text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-50"
-                                >
-                                  <Check className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={cancelEdit}
-                                  aria-label="Cancel edit"
-                                  className="inline-flex items-center justify-center h-7 w-7 text-muted-foreground hover:bg-foreground/[0.06] transition-colors"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
+              {matters.length === 0 && (
+                <li className="py-12 text-center">
+                  <p className="text-[13px] text-muted-foreground">
+                    {error ?? "No matters yet. Create one to group related analyses."}
+                  </p>
+                </li>
+              )}
+
+              {matters.map((m) => {
+                const isEditing = editingId === m.id;
+                return (
+                  <li key={m.id} className="border-b border-border">
+                    <div className="relative flex items-center gap-4 h-14 px-1 hover:bg-foreground/[0.02] transition-colors">
+                      {!isEditing && (
+                        <Link
+                          to="/matter/$id"
+                          params={{ id: m.id }}
+                          aria-label={`Open ${m.name}`}
+                          className="absolute inset-0"
+                        />
+                      )}
+                      <span className="relative flex items-center gap-2 flex-[0_0_45%] min-w-0">
+                        <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        {isEditing ? (
+                          <span className="flex flex-col gap-1 flex-1 min-w-0">
+                            <span className="flex items-center gap-2">
+                              <input
+                                ref={inputRef}
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    saveEdit(m);
+                                  } else if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    cancelEdit();
+                                  }
+                                }}
+                                maxLength={300}
+                                aria-label="Matter name"
+                                aria-invalid={!!editError}
+                                className="flex-1 min-w-0 h-7 px-2 text-[13px] font-normal bg-background border border-border focus:outline-none focus:border-foreground/60"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => saveEdit(m)}
+                                disabled={savingId === m.id}
+                                aria-label="Save name"
+                                className="inline-flex items-center justify-center h-7 w-7 text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-50"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                aria-label="Cancel edit"
+                                className="inline-flex items-center justify-center h-7 w-7 text-muted-foreground hover:bg-foreground/[0.06] transition-colors"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                            {editError && (
+                              <span className="text-[11px] text-destructive font-normal">
+                                {editError}
                               </span>
-                              {editError && (
-                                <span className="text-[11px] text-destructive font-normal">
-                                  {editError}
-                                </span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="truncate block">
-                              {c.caseName || c.snapshot?.caseName || "Untitled case"}
-                            </span>
-                          )}
-                        </span>
-                        <span className="flex-[0_0_25%] min-w-0 text-[13px] text-muted-foreground truncate">
-                          {parties}
-                        </span>
-                        <span
-                          className={`flex-[0_0_15%] min-w-0 relative pl-2 text-[13px] text-foreground truncate before:content-[''] before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[2px] ${toneBar[tone]}`}
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-[14px] font-medium text-foreground truncate">
+                            {m.name}
+                          </span>
+                        )}
+                      </span>
+                      <span className="relative flex-1 min-w-0 text-[13px] text-muted-foreground truncate">
+                        {m.description || ""}
+                      </span>
+                      <span className="relative text-[12px] text-muted-foreground tabular-nums whitespace-nowrap">
+                        {m.caseCount} {m.caseCount === 1 ? "case" : "cases"}
+                      </span>
+                      <span className="relative flex-[0_0_88px] text-right text-[12px] text-muted-foreground">
+                        {formatDate(m.createdAt)}
+                      </span>
+                      <span className="relative flex items-center gap-0.5 pl-1">
+                        <button
+                          type="button"
+                          aria-label="Edit matter name"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!isEditing) startEdit(m);
+                          }}
+                          className="inline-flex items-center justify-center h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                         >
-                          {c.outcome || "—"}
-                        </span>
-                        <span className="flex-[0_0_10%] text-right text-[12px] text-muted-foreground">
-                          {formatDate(c.createdAt)}
-                        </span>
-                        <span className="relative flex items-center gap-0.5 pl-1">
-                          <button
-                            type="button"
-                            aria-label="Edit case name"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (!isEditing) startEdit(c);
-                            }}
-                            className="inline-flex items-center justify-center h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label="Delete case"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setDeleteTarget(c);
-                            }}
-                            className="inline-flex items-center justify-center h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-foreground/[0.06] transition-colors"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Delete matter"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDeleteTarget(m);
+                          }}
+                          className="inline-flex items-center justify-center h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-foreground/[0.06] transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </section>
       </main>
@@ -314,13 +356,11 @@ function CasesDashboard() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this case?</AlertDialogTitle>
+            <AlertDialogTitle>Delete this matter?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes{" "}
-              <span className="font-medium text-foreground">
-                {deleteTarget?.caseName || deleteTarget?.snapshot?.caseName || "this case"}
-              </span>{" "}
-              and its analysis. This cannot be undone.
+              The {deleteTarget?.caseCount ?? 0}{" "}
+              {deleteTarget?.caseCount === 1 ? "case" : "cases"} inside will be unfiled
+              but not deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -338,6 +378,75 @@ function CasesDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={creating}
+        onOpenChange={(open) => {
+          if (!open && !submittingNew) setCreating(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New matter</DialogTitle>
+            <DialogDescription>
+              Group related case analyses (depositions, transcripts) under a single litigation engagement.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <label className="block">
+              <span className="text-[12px] text-muted-foreground">Matter name</span>
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    submitNewMatter();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    if (!submittingNew) setCreating(false);
+                  }
+                }}
+                maxLength={300}
+                placeholder="Smith v. Acme Corp."
+                className="mt-1 w-full bg-transparent border-b border-border px-0 py-2 text-[14px] focus:outline-none focus:border-foreground transition-colors"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-muted-foreground">
+                Description (optional)
+              </span>
+              <textarea
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                rows={3}
+                placeholder="Court, cause number, trial date, notes…"
+                className="mt-1 w-full bg-transparent border border-border px-2 py-2 text-[13px] focus:outline-none focus:border-foreground transition-colors resize-none"
+              />
+            </label>
+            {newError && <p className="text-[12px] text-destructive">{newError}</p>}
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setCreating(false)}
+              disabled={submittingNew}
+              className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-border hover:bg-foreground/[0.05] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submitNewMatter}
+              disabled={submittingNew}
+              className="inline-flex items-center h-8 px-3 text-[13px] text-background bg-foreground border border-foreground hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              {submittingNew ? "Creating…" : "Create matter"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <footer className="border-t border-border py-4">
         <div className="max-w-[880px] mx-auto px-8">
