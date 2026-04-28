@@ -1,157 +1,106 @@
-export function extractJSON(raw: string): unknown {
-  // Remove markdown code fences if present
-  let cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-  // Find the first { and last } and extract everything between them
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1) {
-    throw new Error("No JSON object found in Claude response");
-  }
-  cleaned = cleaned.slice(start, end + 1);
-  return JSON.parse(cleaned);
+import { supabase } from "@/integrations/supabase/client";
+
+export interface JobProgress {
+  progress: number;
+  message: string;
 }
 
-export class TimeoutError extends Error {
-  constructor() {
-    super("Analysis timed out — the transcript may be too long.");
-    this.name = "TimeoutError";
-  }
-}
-
-export class MalformedJsonError extends Error {
-  raw: string;
-  constructor(raw: string) {
-    super("Analysis could not be parsed. This is usually a formatting issue — please retry.");
-    this.name = "MalformedJsonError";
-    this.raw = raw;
-  }
-}
-
-export class ServerAnalyzeError extends Error {
-  status?: number;
-  stage?: string;
-  constructor(message: string, status?: number, stage?: string) {
-    super(stage ? `${message} (stage: ${stage})` : message);
-    this.name = "ServerAnalyzeError";
-    this.status = status;
-    this.stage = stage;
-  }
-}
-
-export interface ProgressEvent {
-  step: number;
-  total: number;
-  label: string;
-}
-
-export interface AnalyzeResult {
+export interface JobResult {
   result: Record<string, unknown>;
   failedSections: string[];
-  timedOutSections: string[];
-  summary: string;
 }
 
-export async function streamAnalyze(
+export class AnalysisFailedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnalysisFailedError";
+  }
+}
+
+export class AnalysisTimeoutError extends Error {
+  constructor() {
+    super("Analysis took too long. Please try again.");
+    this.name = "AnalysisTimeoutError";
+  }
+}
+
+/**
+ * Submit a transcript for analysis and poll the database until done.
+ * - Inserts a job row via the submit route.
+ * - Kicks off the background processor (unawaited fetch — the browser holds
+ *   the connection open so the Worker stays alive while writing progress
+ *   back to the database).
+ * - Polls Supabase every 3s for status updates.
+ */
+export async function runAnalysis(
   caseName: string,
-  input: { transcript?: string; summary?: string },
-  onProgress?: (p: ProgressEvent) => void,
-): Promise<AnalyzeResult> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
-  let res: Response;
-  try {
-    res = await fetch("/api/analyze", {
-      method: "POST",
-      signal: controller.signal,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ caseName, ...input }),
-    });
-  } catch (e) {
-    throw new TimeoutError();
-  } finally {
-    clearTimeout(timeout);
+  transcript: string,
+  onProgress?: (p: JobProgress) => void,
+): Promise<JobResult> {
+  // 1. Submit
+  const submitRes = await fetch("/api/analyze/submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ caseName, transcript }),
+  });
+  if (!submitRes.ok) {
+    const text = await submitRes.text().catch(() => "");
+    throw new AnalysisFailedError(`Failed to submit job: ${text || submitRes.status}`);
   }
-
-  if (res.status === 504 || res.status === 502 || res.status === 503) {
-    throw new TimeoutError();
-  }
-  if (!res.ok || !res.body) {
-    const text = await res.text().catch(() => "");
-    try {
-      const payload = JSON.parse(text) as { message?: string; stage?: string };
-      throw new ServerAnalyzeError(payload.message || `Request failed (${res.status})`, res.status, payload.stage);
-    } catch (err) {
-      if (err instanceof ServerAnalyzeError) throw err;
-      throw new ServerAnalyzeError(text || `Request failed (${res.status})`, res.status);
-    }
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const failedSections: string[] = [];
-  const timedOutSections: string[] = [];
-  let finalResult: Record<string, unknown> | null = null;
-  let summary = "";
-  let serverError: string | null = null;
-
-  const handleLine = (line: string) => {
-    if (!line.trim()) return;
-    let evt: Record<string, unknown>;
-    try {
-      evt = JSON.parse(line);
-    } catch {
-      console.warn("Could not parse NDJSON line:", line);
-      return;
-    }
-    switch (evt.type) {
-      case "progress":
-        onProgress?.({
-          step: evt.step as number,
-          total: evt.total as number,
-          label: evt.label as string,
-        });
-        break;
-      case "section_failed":
-        failedSections.push(evt.key as string);
-        break;
-      case "summary":
-        if (typeof evt.summary === "string") summary = evt.summary;
-        break;
-      case "done":
-        finalResult = evt.result as Record<string, unknown>;
-        if (Array.isArray(evt.failedSections)) {
-          for (const k of evt.failedSections) {
-            if (!failedSections.includes(k as string)) failedSections.push(k as string);
-          }
-        }
-        if (Array.isArray(evt.timedOutSections)) {
-          for (const k of evt.timedOutSections) {
-            if (!timedOutSections.includes(k as string)) timedOutSections.push(k as string);
-          }
-        }
-        if (typeof evt.summary === "string" && !summary) summary = evt.summary;
-        break;
-      case "error":
-        serverError = evt.stage ? `${(evt.message as string) || "Server error"} (stage: ${evt.stage})` : (evt.message as string) || "Server error";
-        break;
-    }
+  const { jobId, error: submitError } = (await submitRes.json()) as {
+    jobId?: string;
+    error?: string;
   };
+  if (!jobId) throw new AnalysisFailedError(submitError ?? "Submit returned no jobId");
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let nl: number;
-    while ((nl = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, nl);
-      buffer = buffer.slice(nl + 1);
-      handleLine(line);
-    }
-  }
-  if (buffer.trim()) handleLine(buffer);
+  // 2. Kick off background processing — fire and forget. The browser keeps
+  //    the connection alive so the Cloudflare Worker stays running.
+  fetch("/api/analyze/process", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId }),
+    keepalive: true,
+  }).catch((err) => console.warn("[analyze] process trigger error:", err));
 
-  if (serverError) throw new Error(serverError);
-  if (!finalResult) throw new TimeoutError();
-  return { result: finalResult, failedSections, timedOutSections, summary };
+  // 3. Poll
+  return await new Promise<JobResult>((resolve, reject) => {
+    const POLL_MS = 3000;
+    const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+    const started = Date.now();
+
+    const interval = window.setInterval(async () => {
+      if (Date.now() - started > TIMEOUT_MS) {
+        window.clearInterval(interval);
+        reject(new AnalysisTimeoutError());
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("analysis_jobs")
+        .select("status, progress, progress_message, result, failed_sections, error")
+        .eq("id", jobId)
+        .single();
+
+      if (error) {
+        // transient — keep polling
+        return;
+      }
+      if (!data) return;
+
+      onProgress?.({ progress: data.progress ?? 0, message: data.progress_message ?? "" });
+
+      if (data.status === "complete") {
+        window.clearInterval(interval);
+        resolve({
+          result: (data.result as Record<string, unknown>) ?? {},
+          failedSections: Array.isArray(data.failed_sections)
+            ? (data.failed_sections as string[])
+            : [],
+        });
+      } else if (data.status === "error") {
+        window.clearInterval(interval);
+        reject(new AnalysisFailedError(data.error ?? "Analysis failed."));
+      }
+    }, POLL_MS);
+  });
 }
