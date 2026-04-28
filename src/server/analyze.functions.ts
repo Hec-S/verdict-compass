@@ -90,5 +90,5 @@ export const analyzeTranscript = createServerFn({ method: "POST" })
       throw new Error("Claude returned malformed JSON. Please retry.");
     }
 
-    return { result: parsed as Record<string, unknown> };
+    return { result: parsed as Record<string, {}> };
   });
