@@ -276,11 +276,9 @@ function MatterDetailPage() {
         setLatestSynthesis(row);
         setSynthProgress(row.progress);
         if (row.progressMessage) setSynthMessage(row.progressMessage);
-        if (row.status === "complete") {
-          navigate({
-            to: "/matter/$matterId/synthesis/$synthesisId",
-            params: { matterId: matter.id, synthesisId },
-          });
+        if (row.status === "complete" || row.status === "complete_with_errors") {
+          // Synthesis is rendered inline below — no navigation.
+          setSynthRunning(false);
           return;
         }
         if (row.status === "error") {
