@@ -3,8 +3,13 @@ import { useState, useRef } from "react";
 import { Loader2, Sparkles, ShieldCheck, Zap, AlertTriangle, RotateCcw } from "lucide-react";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { UploadZone } from "@/components/verdict/UploadZone";
+import { Progress } from "@/components/ui/progress";
 import { extractPdfText, combineAndCap, MAX_CHARS } from "@/lib/pdf-extract";
-import { streamAnalyze, TimeoutError, MalformedJsonError } from "@/lib/analyze-client";
+import {
+  runAnalysis,
+  AnalysisTimeoutError,
+  AnalysisFailedError,
+} from "@/lib/analyze-client";
 import { saveCase } from "@/lib/case-store";
 import { normalizeResult } from "@/lib/normalize-result";
 
@@ -33,22 +38,18 @@ function Index() {
   const [files, setFiles] = useState<File[]>([]);
   const [caseName, setCaseName] = useState("");
   const [status, setStatus] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ step: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
-  const [parseFailed, setParseFailed] = useState(false);
-  const [parseFailCount, setParseFailCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [truncatedNotice, setTruncatedNotice] = useState<string | null>(null);
   const [extractedInfo, setExtractedInfo] = useState<{ chars: number; truncated: boolean } | null>(null);
   const [extracting, setExtracting] = useState(false);
   const lastPayload = useRef<PreparedPayload | null>(null);
-  const cachedSummary = useRef<string | null>(null);
 
   // Extract + clean PDFs as soon as files are selected, so we can show char count.
   async function handleFilesChange(next: File[]) {
     setFiles(next);
-    cachedSummary.current = null;
     lastPayload.current = null;
     setExtractedInfo(null);
     setError(null);
@@ -78,29 +79,25 @@ function Index() {
     return { caseName: caseName.trim(), transcript: text, truncated };
   }
 
-  async function runAnalysis(payload: PreparedPayload) {
+  async function startAnalysis(payload: PreparedPayload) {
     setError(null);
     setTimedOut(false);
-    setParseFailed(false);
     setBusy(true);
-    setProgress(null);
-    setStatus("Preparing analysis…");
+    setProgress(0);
+    setStatus("Submitting transcript…");
 
     try {
-      const useSummary = cachedSummary.current;
-      const { result, failedSections, summary } = await streamAnalyze(
+      const { result, failedSections } = await runAnalysis(
         payload.caseName,
-        useSummary ? { summary: useSummary } : { transcript: payload.transcript },
+        payload.transcript,
         (p) => {
-          setProgress({ step: p.step, total: p.total });
-          setStatus(`${p.label} (${p.step}/${p.total})`);
+          setProgress(p.progress);
+          if (p.message) setStatus(p.message);
         },
       );
-      // Cache the summary so retries skip the compression call.
-      if (summary) cachedSummary.current = summary;
       setStatus("Analysis complete.");
+      setProgress(100);
       const { result: normalized, missing } = normalizeResult(result);
-      // Merge server-reported failed sections with shape-validation misses
       const allMissing = Array.from(new Set([...(missing ?? []), ...failedSections]));
       const id = crypto.randomUUID();
       saveCase({
@@ -111,23 +108,20 @@ function Index() {
         result: normalized,
         missingSections: allMissing,
       });
-      setParseFailCount(0);
       navigate({ to: "/report/$id", params: { id } });
     } catch (e) {
       console.error(e);
-      if (e instanceof TimeoutError) {
+      if (e instanceof AnalysisTimeoutError) {
         setTimedOut(true);
         setError(
           "Analysis timed out — the transcript may be too long. You can retry or try uploading fewer pages.",
         );
-      } else if (e instanceof MalformedJsonError) {
-        setParseFailed(true);
-        setParseFailCount((c) => c + 1);
-        setError(
-          "Analysis could not be parsed. This is usually a formatting issue — please retry.",
-        );
+      } else if (e instanceof AnalysisFailedError) {
+        setError(e.message);
+        setTimedOut(true);
       } else {
         setError(e instanceof Error ? e.message : "Something went wrong.");
+        setTimedOut(true);
       }
       setStatus(null);
     } finally {
@@ -138,7 +132,6 @@ function Index() {
   async function handleAnalyze() {
     setError(null);
     setTimedOut(false);
-    setParseFailed(false);
     if (!caseName.trim()) {
       setError("Please enter a case name.");
       return;
@@ -152,8 +145,7 @@ function Index() {
     try {
       const payload = await preparePayload();
       lastPayload.current = payload;
-      cachedSummary.current = null; // fresh analysis = fresh summary
-      await runAnalysis(payload);
+      await startAnalysis(payload);
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : "Failed to read PDF.");
@@ -163,7 +155,7 @@ function Index() {
   }
 
   function handleRetry() {
-    if (lastPayload.current) runAnalysis(lastPayload.current);
+    if (lastPayload.current) startAnalysis(lastPayload.current);
   }
 
   return (
@@ -235,16 +227,11 @@ function Index() {
                 <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
                   <p>{error}</p>
-                  {parseFailed && parseFailCount >= 2 && (
-                    <p className="mt-1 text-xs opacity-80">
-                      If this keeps failing, try uploading fewer pages at once.
-                    </p>
-                  )}
                 </div>
               </div>
             )}
 
-            {(timedOut || parseFailed) && lastPayload.current && !busy && (
+            {timedOut && lastPayload.current && !busy && (
               <button
                 onClick={handleRetry}
                 className="mt-3 w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-gold/40 bg-gold/10 text-gold font-semibold text-sm hover:bg-gold/20 transition"
@@ -252,6 +239,16 @@ function Index() {
                 <RotateCcw className="w-4 h-4" />
                 Retry analysis
               </button>
+            )}
+
+            {busy && progress !== null && (
+              <div className="mt-5 space-y-2">
+                <Progress value={progress} className="h-2" />
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{status ?? "Working…"}</span>
+                  <span className="font-mono text-gold">{progress}%</span>
+                </div>
+              </div>
             )}
 
             <button
@@ -263,11 +260,6 @@ function Index() {
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
                   {status ?? "Working…"}
-                  {progress && (
-                    <span className="font-mono text-xs opacity-70 ml-1">
-                      ({progress.step}/{progress.total})
-                    </span>
-                  )}
                 </>
               ) : (
                 <>
