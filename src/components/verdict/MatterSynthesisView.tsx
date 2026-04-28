@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Cite } from "./Panel";
 import type { CaseSynthesis } from "@/lib/analysis-types";
+import { SYNTHESIS_SUB_CALLS, type SynthesisSubCallKey } from "@/lib/analysis-types";
 
 // ---------------- Shared label maps ----------------
 
@@ -112,6 +113,12 @@ interface Props {
   caseLabels?: Map<string, string>;
   onRerun?: () => void;
   rerunDisabled?: boolean;
+  /** Internal sub-call keys that failed in the most recent run. Used to
+   *  render "Section unavailable" placeholders for sections whose data
+   *  could not be produced. */
+  failedSubCallKeys?: string[];
+  /** Invoked when the user clicks "Re-run failed sections" inside the report. */
+  onRerunFailed?: () => void;
 }
 
 export function MatterSynthesisView({
@@ -119,11 +126,39 @@ export function MatterSynthesisView({
   caseLabels,
   onRerun,
   rerunDisabled,
+  failedSubCallKeys = [],
+  onRerunFailed,
 }: Props) {
   const [confirmRerun, setConfirmRerun] = useState(false);
   const exec = synthesis.execSummary;
   const labelFor = (caseId: string, fallback?: string) =>
     fallback || caseLabels?.get(caseId) || caseId.slice(0, 8);
+
+  const failed = new Set(failedSubCallKeys);
+  const isFailed = (key: SynthesisSubCallKey) => failed.has(key);
+
+  const Unavailable = ({ subCallKey }: { subCallKey: SynthesisSubCallKey }) => (
+    <div className="border border-amber-500/40 bg-amber-500/5 p-4 text-[12.5px] text-foreground/90">
+      <p className="mb-2">
+        <span className="font-medium">Section unavailable</span> — the{" "}
+        <span className="font-medium">{SYNTHESIS_SUB_CALLS[subCallKey].label}</span>{" "}
+        sub-call failed during synthesis.
+      </p>
+      {onRerunFailed ? (
+        <button
+          type="button"
+          onClick={onRerunFailed}
+          className="inline-flex items-center h-7 px-3 text-[12px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors"
+        >
+          Re-run failed sections
+        </button>
+      ) : (
+        <p className="text-muted-foreground">
+          Click "Re-run failed sections" above to retry.
+        </p>
+      )}
+    </div>
+  );
 
   const handleDownloadPdf = () => {
     if (typeof window !== "undefined") window.print();
