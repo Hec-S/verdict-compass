@@ -233,7 +233,7 @@ recommendations: ${JSON.stringify(result.recommendations ?? [])}`;
   return card;
 }
 
-// ---------------- Stage B — Case-level synthesis ----------------
+// ---------------- Stage B — Case-level synthesis (six sub-calls) ----------------
 
 const CASE_SYNTHESIS_SYSTEM = `You are a senior defense litigation attorney and trial strategist with 25 years of personal injury defense experience in Nevada state courts. You are producing a case-level defense intelligence report from the deposition cards of every witness deposed in this matter. This report will be the operative defense playbook through trial.
 
@@ -249,87 +249,248 @@ Domain priors you operate from:
 5. Nevada juries respond to defense narratives that are factual, concrete, and respect the plaintiff's prior real injuries. Do not produce trial themes that attack the plaintiff personally; produce themes that attack the gap between what the accident actually caused and what plaintiff's providers are claiming.
 6. NRCP 30(b) depositions, NRS Chapter 50 evidence rules, and Nevada state court procedure govern. Reference accordingly.
 
-Respond with ONLY a valid JSON object matching the CaseSynthesis schema. No markdown, no preamble, no commentary.`;
+Respond with ONLY a valid JSON object containing the requested keys. No markdown, no preamble, no commentary.`;
 
-export async function synthesizeMatter(
-  apiKey: string,
-  matter: MatterRow,
-  cards: DepositionCard[],
-): Promise<CaseSynthesis> {
-  const userMessage = `Produce the case-level defense synthesis for this matter.
-
-MATTER: ${matter.name}
+function buildSharedInput(matter: MatterRow, cards: DepositionCard[]): string {
+  return `MATTER: ${matter.name}
 DESCRIPTION: ${matter.description ?? ""}
 
 DEPOSITION CARDS (${cards.length} witnesses):
-${JSON.stringify(cards, null, 2)}
+${JSON.stringify(cards, null, 2)}`;
+}
 
-Return ONLY this JSON:
-${CASE_SYNTHESIS_SCHEMA}
-
-Specific instructions for each section:
-- execSummary.defenseTheory: 2-3 sentences. State the operative defense theory grounded in this record. If the record best supports causation apportionment, say so. If it best supports credibility attack, say so. If it best supports methodology challenge to plaintiff's experts, say so. Do not produce a generic theory.
-- execSummary.caseStrength: your honest assessment based on the cards. Strong = defense wins on summary judgment or directed verdict. Favorable = defense wins at trial absent surprises. Mixed = jury question with reasonable defense verdict possible. Unfavorable = plaintiff wins absent settlement or strong trial performance. Weak = plaintiff wins.
-- execSummary.recommendedPosture: trial / settle_low / settle_midrange / settle_high / more_discovery. Be specific in postureRationale about the dollar range you have in mind given Nevada verdict patterns for the injury type at issue.
-- witnessThreatRanking: rank EVERY deponent by how dangerous they are to the defense at trial, 1 = most dangerous. crossPriorities are 3-5 specific cross themes per witness, written as direct instructions to defense counsel.
-- contradictionMatrix: identify every meaningful contradiction across witnesses. exploitability is high if you can put two witnesses' deposition transcripts side-by-side at trial; medium if it requires setup; low if it is real but probably won't move the jury.
-- unifiedAdmissionsInventory: group admissions by topic, not by witness. The most powerful admissions are the ones supported by multiple witnesses.
-- causationAnalysis: this is where most PI cases are won or lost. Be specific about baselineConditions and priorAccidentSequelae established in the record. weakestCausationLink should name the exact testimony or gap that defense should drive at trial.
-- methodologyChallenges: every available challenge to plaintiff's experts and treating providers, framed as motions. Include cites back to specific deposition admissions.
-- biasNarrative: tell the litigation-pipeline story as a narrative that could become an opening or closing argument. pipelineMap should literally trace who referred whom in the order it happened.
-- motionsInLimine: motions you should file pretrial. Priority: must_file = case-defining; should_file = significant tactical advantage; consider = useful if budget allows.
-- discoveryGaps: what's missing from the record that defense still needs. priority high = before MSJ deadline; medium = before pretrial; low = useful but not critical.
-- trialThemes: 3-5 themes max. Each must be supported by 3+ witnesses or 3+ specific facts. Themes supported by only one witness do not belong here.
-- whatWeMessedUp: real critique. For each deposition, identify what defense counsel missed that they should have asked. canStillFix is true if a follow-up deposition, supplemental discovery, or motion can recover the missed opportunity; false if the moment has passed.
-- whatToDoNext: prioritized action list. this_week = drop everything and do this; before_trial = put on the pretrial checklist; consider = if time/budget allows.`;
-
+async function runSubSynthesis(
+  apiKey: string,
+  label: string,
+  userMessage: string,
+  maxTokens: number,
+): Promise<Record<string, unknown>> {
   const t = Date.now();
-  const raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, 8000);
+  const raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, maxTokens);
   console.log(
-    `[synthesize.process] synthesizeMatter ${matter.id} ok in ${Date.now() - t}ms (${raw.length} chars)`,
+    `[synthesize.process] sub:${label} ok in ${Date.now() - t}ms (${raw.length} chars)`,
   );
-
-  // Detect possible truncation: closing brace not present at the very end.
-  const trimmed = raw.trim();
-  if (!trimmed.endsWith("}")) {
-    console.warn(
-      `[synthesize.process] synthesizeMatter output may be truncated (does not end with '}')`,
+  try {
+    return extractJSON(raw, `sub:${label}`);
+  } catch (err) {
+    console.error(
+      `[synthesize.process] sub:${label} JSON parse failed:`,
+      err instanceof Error ? err.message : String(err),
     );
+    return {};
   }
+}
 
-  const parsed = extractJSON(raw, `synthesis:${matter.id}`) as Partial<CaseSynthesis>;
+export async function synthesizeStrategicOverview(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSharedInput(matter, cards);
+  const userMessage = `Produce the STRATEGIC OVERVIEW slice of the case-level defense synthesis.
 
+${shared}
+
+Return ONLY the following JSON keys and nothing else: execSummary, biasNarrative, trialThemes.
+
+Schema:
+{
+  "execSummary": {
+    "defenseTheory": "2-3 sentences. State the operative defense theory grounded in this record (causation apportionment, credibility attack, methodology challenge, etc.). Do not produce a generic theory.",
+    "caseStrength": "strong|favorable|mixed|unfavorable|weak — your honest assessment.",
+    "strengthRationale": "",
+    "topThreats": [ "" ],
+    "topOpportunities": [ "" ],
+    "recommendedPosture": "trial|settle_low|settle_midrange|settle_high|more_discovery",
+    "postureRationale": "Be specific about the dollar range you have in mind given Nevada verdict patterns for the injury type at issue."
+  },
+  "biasNarrative": {
+    "pipelineMap": "Trace who referred whom in the order it happened. Tell the litigation-pipeline story as a narrative that could become an opening or closing argument.",
+    "financialRelationships": [ "" ],
+    "repeatPlayerPatterns": [ "" ],
+    "trialNarrative": ""
+  },
+  "trialThemes": [ { "theme": "", "supportingWitnesses": [ "" ], "supportingFacts": [ "" ], "voirDireAngle": "" } ]
+}
+
+Constraints:
+- 3-5 trial themes maximum. Each must be supported by 3+ witnesses or 3+ specific facts.
+- Do not include any other top-level keys.`;
+  return runSubSynthesis(apiKey, "strategicOverview", userMessage, 3000);
+}
+
+export async function synthesizeWitnessThreats(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSharedInput(matter, cards);
+  const userMessage = `Produce the WITNESS THREAT RANKING slice of the case-level defense synthesis.
+
+${shared}
+
+Return ONLY the following JSON keys and nothing else: witnessThreatRanking.
+
+Schema:
+{
+  "witnessThreatRanking": [
+    { "caseId": "", "deponentName": "", "rank": 0, "threatLevel": "high|medium|low", "summary": "", "crossPriorities": [ "" ] }
+  ]
+}
+
+Rank EVERY deponent by how dangerous they are to the defense at trial. rank=1 is the most dangerous. crossPriorities are 3-5 specific cross themes per witness, written as direct instructions to defense counsel. Use the exact caseId from each deposition card.`;
+  return runSubSynthesis(apiKey, "witnessThreats", userMessage, 4000);
+}
+
+export async function synthesizeContradictionsAndAdmissions(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSharedInput(matter, cards);
+  const userMessage = `Produce the CONTRADICTIONS AND ADMISSIONS slice of the case-level defense synthesis.
+
+${shared}
+
+Return ONLY the following JSON keys and nothing else: contradictionMatrix, unifiedAdmissionsInventory.
+
+Schema:
+{
+  "contradictionMatrix": [
+    { "topic": "", "witnesses": [ { "caseId": "", "deponentName": "", "position": "", "cite": "" } ], "exploitability": "high|medium|low", "defenseUse": "" }
+  ],
+  "unifiedAdmissionsInventory": [
+    { "topic": "", "admissions": [ { "caseId": "", "deponentName": "", "admission": "", "cite": "" } ], "trialUse": "" }
+  ]
+}
+
+contradictionMatrix: identify every meaningful contradiction across witnesses.
+unifiedAdmissionsInventory: group admissions by topic, not by witness. The most powerful admissions are supported by multiple witnesses.`;
+  return runSubSynthesis(apiKey, "contradictionsAdmissions", userMessage, 4000);
+}
+
+export async function synthesizeCausationAndMethodology(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSharedInput(matter, cards);
+  const userMessage = `Produce the CAUSATION AND METHODOLOGY slice of the case-level defense synthesis.
+
+${shared}
+
+Return ONLY the following JSON keys and nothing else: causationAnalysis, methodologyChallenges.
+
+Schema:
+{
+  "causationAnalysis": {
+    "baselineConditions": [ "" ],
+    "priorAccidentSequelae": [ "" ],
+    "accidentMechanism": "",
+    "apportionmentArguments": [ "" ],
+    "weakestCausationLink": "Name the exact testimony or gap that defense should drive at trial."
+  },
+  "methodologyChallenges": [
+    { "targetWitness": "", "caseId": "", "basis": "", "motionType": "Daubert|motion_in_limine|limit_testimony|exclude", "supportingCites": [ "" ] }
+  ]
+}
+
+Most PI cases are won or lost on causation. Be specific. methodologyChallenges: every available challenge to plaintiff's experts and treating providers, framed as motions, with cites.`;
+  return runSubSynthesis(apiKey, "causationMethodology", userMessage, 3000);
+}
+
+export async function synthesizeMotionsAndDiscovery(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSharedInput(matter, cards);
+  const userMessage = `Produce the MOTIONS AND DISCOVERY slice of the case-level defense synthesis.
+
+${shared}
+
+Return ONLY the following JSON keys and nothing else: motionsInLimine, discoveryGaps.
+
+Schema:
+{
+  "motionsInLimine": [
+    { "motion": "", "basis": "", "supportingCites": [ "" ], "priority": "must_file|should_file|consider" }
+  ],
+  "discoveryGaps": [
+    { "gap": "", "impact": "", "recommendedAction": "", "priority": "high|medium|low" }
+  ]
+}
+
+motionsInLimine priority: must_file = case-defining; should_file = significant tactical advantage; consider = useful if budget allows.
+discoveryGaps priority: high = before MSJ deadline; medium = before pretrial; low = useful but not critical.`;
+  return runSubSynthesis(apiKey, "motionsDiscovery", userMessage, 2500);
+}
+
+export async function synthesizeRetrospective(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSharedInput(matter, cards);
+  const userMessage = `Produce the RETROSPECTIVE slice of the case-level defense synthesis.
+
+${shared}
+
+Return ONLY the following JSON keys and nothing else: whatWeMessedUp, whatToDoNext.
+
+Schema:
+{
+  "whatWeMessedUp": [
+    { "deposition": "", "caseId": "", "missedOpportunity": "", "wouldHaveHelped": "", "canStillFix": false, "fixAction": "" }
+  ],
+  "whatToDoNext": [
+    { "action": "", "priority": "this_week|before_trial|consider", "rationale": "" }
+  ]
+}
+
+whatWeMessedUp: real critique. canStillFix is true if a follow-up deposition, supplemental discovery, or motion can recover; false if the moment has passed.
+whatToDoNext: prioritized action list. this_week = drop everything; before_trial = pretrial checklist; consider = if time/budget allows.`;
+  return runSubSynthesis(apiKey, "retrospective", userMessage, 2500);
+}
+
+function mergeSynthesis(
+  matter: MatterRow,
+  parts: Record<string, unknown>,
+): CaseSynthesis {
+  const parsed = parts as Partial<CaseSynthesis>;
   const exec = (parsed.execSummary ?? {}) as Partial<CaseSynthesis["execSummary"]>;
   const causation = (parsed.causationAnalysis ?? {}) as Partial<
     CaseSynthesis["causationAnalysis"]
   >;
   const bias = (parsed.biasNarrative ?? {}) as Partial<CaseSynthesis["biasNarrative"]>;
 
-  const synthesis: CaseSynthesis = {
+  return {
     matterId: matter.id,
     execSummary: {
       defenseTheory: exec.defenseTheory ?? "",
-      caseStrength:
-        (["strong", "favorable", "mixed", "unfavorable", "weak"].includes(
-          exec.caseStrength as string,
-        )
-          ? (exec.caseStrength as CaseSynthesis["execSummary"]["caseStrength"])
-          : "mixed"),
+      caseStrength: ([
+        "strong",
+        "favorable",
+        "mixed",
+        "unfavorable",
+        "weak",
+      ].includes(exec.caseStrength as string)
+        ? (exec.caseStrength as CaseSynthesis["execSummary"]["caseStrength"])
+        : "mixed"),
       strengthRationale: exec.strengthRationale ?? "",
       topThreats: Array.isArray(exec.topThreats) ? exec.topThreats : [],
       topOpportunities: Array.isArray(exec.topOpportunities)
         ? exec.topOpportunities
         : [],
-      recommendedPosture:
-        ([
-          "trial",
-          "settle_low",
-          "settle_midrange",
-          "settle_high",
-          "more_discovery",
-        ].includes(exec.recommendedPosture as string)
-          ? (exec.recommendedPosture as CaseSynthesis["execSummary"]["recommendedPosture"])
-          : "more_discovery"),
+      recommendedPosture: ([
+        "trial",
+        "settle_low",
+        "settle_midrange",
+        "settle_high",
+        "more_discovery",
+      ].includes(exec.recommendedPosture as string)
+        ? (exec.recommendedPosture as CaseSynthesis["execSummary"]["recommendedPosture"])
+        : "more_discovery"),
       postureRationale: exec.postureRationale ?? "",
     },
     witnessThreatRanking: Array.isArray(parsed.witnessThreatRanking)
@@ -377,7 +538,61 @@ Specific instructions for each section:
       : [],
     whatToDoNext: Array.isArray(parsed.whatToDoNext) ? parsed.whatToDoNext : [],
   };
-  return synthesis;
+}
+
+interface SubCall {
+  key: string;
+  label: string;
+  progress: number;
+  message: string;
+  fn: (
+    apiKey: string,
+    matter: MatterRow,
+    cards: DepositionCard[],
+  ) => Promise<Record<string, unknown>>;
+}
+
+const SUB_CALLS: SubCall[] = [
+  { key: "strategicOverview", label: "Strategic overview", progress: 87, message: "Synthesizing strategic overview", fn: synthesizeStrategicOverview },
+  { key: "witnessThreats", label: "Witness threats", progress: 89, message: "Ranking witness threats", fn: synthesizeWitnessThreats },
+  { key: "contradictionsAdmissions", label: "Contradictions and admissions", progress: 92, message: "Mapping contradictions and admissions", fn: synthesizeContradictionsAndAdmissions },
+  { key: "causationMethodology", label: "Causation and methodology", progress: 94, message: "Building causation and methodology challenges", fn: synthesizeCausationAndMethodology },
+  { key: "motionsDiscovery", label: "Motions and discovery", progress: 96, message: "Drafting motions and discovery roadmap", fn: synthesizeMotionsAndDiscovery },
+  { key: "retrospective", label: "Retrospective", progress: 98, message: "Identifying missed opportunities and next steps", fn: synthesizeRetrospective },
+];
+
+export async function synthesizeMatter(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+  onProgress?: (p: { progress: number; message: string }) => Promise<void>,
+): Promise<{ result: CaseSynthesis; failedSections: string[]; successCount: number }> {
+  const merged: Record<string, unknown> = {};
+  const failedSections: string[] = [];
+  let successCount = 0;
+
+  for (const sub of SUB_CALLS) {
+    if (onProgress) {
+      await onProgress({ progress: sub.progress, message: sub.message });
+    }
+    try {
+      const part = await sub.fn(apiKey, matter, cards);
+      if (part && Object.keys(part).length > 0) {
+        Object.assign(merged, part);
+        successCount += 1;
+      } else {
+        failedSections.push(sub.label);
+      }
+    } catch (err) {
+      console.error(
+        `[synthesize.process] sub:${sub.key} failed:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      failedSections.push(sub.label);
+    }
+  }
+
+  return { result: mergeSynthesis(matter, merged), failedSections, successCount };
 }
 
 async function updateSynthesis(
