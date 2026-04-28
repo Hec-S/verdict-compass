@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
-import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { UploadZone } from "@/components/verdict/UploadZone";
 import { extractPdfText, combineAndCap, MAX_CHARS } from "@/lib/pdf-extract";
@@ -9,11 +8,11 @@ import { submitAnalysis, AnalysisFailedError } from "@/lib/analyze-client";
 import { saveClientTrace, type ClientTraceEvent } from "@/lib/debug-trace";
 
 export const Route = createFileRoute("/new")({
-  validateSearch: zodValidator(
-    z.object({
-      matterId: fallback(z.string().uuid().optional(), undefined),
-    }),
-  ),
+  validateSearch: (search: Record<string, unknown>) => {
+    const schema = z.object({ matterId: z.string().uuid().optional() });
+    const result = schema.safeParse(search);
+    return result.success ? result.data : { matterId: undefined };
+  },
   head: () => ({
     meta: [
       { title: "New analysis — VerdictIQ" },
