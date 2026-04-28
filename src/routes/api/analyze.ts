@@ -5,6 +5,16 @@ export const config = { runtime: "edge" };
 
 const TRANSCRIPT_CHAR_LIMIT = 60_000;
 
+type RuntimeGlobals = typeof globalThis & {
+  Deno?: { env?: { get?: (key: string) => string | undefined } };
+  process?: { env?: Record<string, string | undefined> };
+};
+
+function getAnthropicApiKey(): string | undefined {
+  const runtime = globalThis as RuntimeGlobals;
+  return runtime.Deno?.env?.get?.("ANTHROPIC_API_KEY") ?? runtime.process?.env?.ANTHROPIC_API_KEY;
+}
+
 const InputSchema = z.object({
   caseName: z.string().min(1).max(300),
   transcript: z.string().min(50).max(110_000).optional(),
@@ -135,7 +145,7 @@ export const Route = createFileRoute("/api/analyze")({
     handlers: {
       POST: async ({ request }: { request: Request }) => {
         console.log("Edge function started");
-        const apiKey = process.env.ANTHROPIC_API_KEY;
+        const apiKey = getAnthropicApiKey();
         if (!apiKey) {
           return Response.json(
             { error: true, message: "ANTHROPIC_API_KEY is not configured.", stage: "configuration" },
