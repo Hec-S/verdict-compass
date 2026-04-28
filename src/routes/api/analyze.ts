@@ -172,21 +172,29 @@ export const Route = createFileRoute("/api/analyze")({
             const failed: string[] = [];
             const timedOutSections: string[] = [];
             let summary: string = parsedInput.summary ?? "";
+            let currentStage = "initializing";
 
             try {
               const totalSteps = 1 + SECTIONS.length;
 
               // ===== Call 0: compression pre-pass (skip if summary was provided) =====
               if (!summary) {
+                currentStage = "compression";
                 send({ type: "progress", step: 1, total: totalSteps, label: "Reading the transcript…" });
-                const rawTranscript = (parsedInput.transcript ?? "").slice(0, 80_000);
+                const rawInput = parsedInput.transcript ?? "";
+                console.log("Raw payload length:", rawInput.length);
+                const rawTranscript = rawInput.slice(0, TRANSCRIPT_CHAR_LIMIT);
+                console.log("Truncated payload length:", rawTranscript.length);
                 try {
+                  console.log("Starting compression call (Call 0)...");
+                  const t0 = Date.now();
                   const raw = await callClaude(
                     apiKey,
                     "You produce dense, faithful litigation summaries.",
                     `${COMPRESSION_PROMPT}\n\nCase label: ${parsedInput.caseName}\n\nTranscript:\n${rawTranscript}`,
                     2000,
                   );
+                  console.log("Compression call completed in", Date.now() - t0, "ms");
                   console.log(`[analyze] compression raw length=${raw.length}`);
                   summary = raw.trim();
                 } catch (err) {
@@ -203,12 +211,16 @@ export const Route = createFileRoute("/api/analyze")({
               // ===== Calls 1-4: analysis sections, all against the compressed summary =====
               for (let i = 0; i < SECTIONS.length; i++) {
                 const section = SECTIONS[i];
+                currentStage = section.key;
                 send({ type: "progress", step: i + 2, total: totalSteps, label: section.label });
 
                 const userMessage = `Analyze this litigation transcript summary and return ONLY this JSON structure with no other text:\n${section.schema}\n\nCase label: ${parsedInput.caseName}\n\nSummary:\n${summary}`;
 
                 try {
+                  console.log(`Starting analysis call ${i + 1} (${section.key})...`);
+                  const t = Date.now();
                   const raw = await callClaude(apiKey, SYSTEM_PROMPT, userMessage, 1500);
+                  console.log(`Call ${i + 1} (${section.key}) completed in`, Date.now() - t, "ms");
                   console.log(`[analyze] section=${section.key} raw response:`, raw);
                   const parsed = extractJSON(raw);
                   Object.assign(merged, parsed);
@@ -232,7 +244,7 @@ export const Route = createFileRoute("/api/analyze")({
               controller.close();
             } catch (e) {
               console.error("[analyze] fatal:", e);
-              send({ type: "error", message: e instanceof Error ? e.message : "Unknown error" });
+              send({ type: "error", message: e instanceof Error ? e.message : "Unknown error", stage: currentStage });
               controller.close();
             }
           },
