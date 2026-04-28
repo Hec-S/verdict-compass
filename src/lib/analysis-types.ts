@@ -203,8 +203,14 @@ export interface MatterSynthesisRow {
   result: CaseSynthesis | null;
   caseIds: string[];
   createdAt: number;
-  status: "pending" | "processing" | "complete" | "error";
+  status:
+    | "pending"
+    | "processing"
+    | "complete"
+    | "complete_with_errors"
+    | "error";
   progress: number;
   progressMessage: string | null;
   error: string | null;
+  failedSections: string[];
 }
