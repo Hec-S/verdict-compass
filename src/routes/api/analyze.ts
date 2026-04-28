@@ -104,12 +104,12 @@ async function callClaude(
       method: "POST",
       signal: controller.signal,
       headers: {
+        "Content-Type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
+        model: "claude-sonnet-4-20250514",
         max_tokens: maxTokens,
         system,
         messages: [{ role: "user", content: userMessage }],
@@ -202,7 +202,7 @@ export const Route = createFileRoute("/api/analyze")({
                     apiKey,
                     "You produce dense, faithful litigation summaries.",
                     `${COMPRESSION_PROMPT}\n\nCase label: ${parsedInput.caseName}\n\nTranscript:\n${rawTranscript}`,
-                    2000,
+                    1500,
                   );
                   console.log("Compression call completed in", Date.now() - t0, "ms");
                   console.log(`[analyze] compression raw length=${raw.length}`);
