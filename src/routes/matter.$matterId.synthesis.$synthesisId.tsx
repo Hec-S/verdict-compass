@@ -172,15 +172,16 @@ function MatterSynthesisPage() {
                 Status: {synth.status} · {synth.caseIds.length}{" "}
                 {synth.caseIds.length === 1 ? "case" : "cases"} included
               </p>
-              {synth.status !== "complete" && synth.status !== "error" && (
+              {synth.status !== "complete" &&
                 synth.status !== "complete_with_errors" &&
-                <div className="mb-6 border border-border p-4">
-                  <p className="text-[13px] text-foreground mb-2">
-                    {synth.progressMessage ?? "Preparing…"}
-                  </p>
-                  <Progress value={synth.progress} />
-                </div>
-              )}
+                synth.status !== "error" && (
+                  <div className="mb-6 border border-border p-4">
+                    <p className="text-[13px] text-foreground mb-2">
+                      {synth.progressMessage ?? "Preparing…"}
+                    </p>
+                    <Progress value={synth.progress} />
+                  </div>
+                )}
               {synth.status === "error" && synth.error && (
                 <div className="mt-2 border border-destructive/30 p-4 print:hidden">
                   <p className="text-[13px] text-destructive mb-3">{synth.error}</p>
