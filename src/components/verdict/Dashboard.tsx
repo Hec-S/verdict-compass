@@ -32,6 +32,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
   const navigate = useNavigate();
   const r = stored.result;
   const snap = r.caseSnapshot ?? ({} as any);
+  const missing = new Set(stored.missingSections ?? []);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-10 space-y-6 print:py-2 print:max-w-none">
@@ -90,6 +91,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
         subtitle="Effective tactics, strong moments, and strategic wins"
         count={r.wentWell?.length ?? 0}
         accent="success"
+        missing={missing.has("wentWell")}
       >
         <div className="grid md:grid-cols-2 gap-4 mt-4">
           {r.wentWell?.map((c, i) => (
@@ -115,6 +117,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
         subtitle="Missteps, missed opportunities, and what hurt the case"
         count={r.wentPoorly?.length ?? 0}
         accent="destructive"
+        missing={missing.has("wentPoorly")}
       >
         <div className="grid md:grid-cols-2 gap-4 mt-4">
           {r.wentPoorly?.map((c, i) => (
@@ -146,6 +149,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
         subtitle="Pivotal turning points that swung the case"
         count={r.criticalMoments?.length ?? 0}
         accent="gold"
+        missing={missing.has("criticalMoments")}
       >
         <ol className="relative mt-6 ml-3 border-l-2 border-gold/40 space-y-6">
           {r.criticalMoments?.map((m, i) => (
@@ -168,6 +172,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
         title="Witness Performance"
         subtitle="Credibility and strategic value of each witness"
         count={r.witnesses?.length ?? 0}
+        missing={missing.has("witnesses")}
       >
         <div className="grid md:grid-cols-2 gap-4 mt-4">
           {r.witnesses?.map((w, i) => (
@@ -210,6 +215,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
         title="Objections & Rulings"
         subtitle="Every objection logged with strategic significance"
         count={r.objections?.length ?? 0}
+        missing={missing.has("objections")}
       >
         <div className="mt-4 overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
@@ -245,6 +251,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
         title="Jury Charge Issues"
         subtitle="Disputes raised at the charge conference"
         count={r.juryChargeIssues?.length ?? 0}
+        missing={missing.has("juryChargeIssues")}
       >
         <div className="space-y-4 mt-4">
           {r.juryChargeIssues?.map((j, i) => (
@@ -282,6 +289,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
         subtitle="Direct attorney advice for retrial or appeal"
         count={r.recommendations?.length ?? 0}
         accent="gold"
+        missing={missing.has("recommendations")}
       >
         <ul className="space-y-3 mt-4">
           {r.recommendations?.map((rec, i) => (

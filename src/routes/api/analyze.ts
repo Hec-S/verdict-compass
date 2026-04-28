@@ -6,7 +6,7 @@ const InputSchema = z.object({
   transcript: z.string().min(50).max(110_000),
 });
 
-const SYSTEM_PROMPT = `You are a senior trial attorney with 25 years of experience in civil litigation. You are reviewing litigation transcripts to provide a detailed post-trial analysis.
+const SYSTEM_PROMPT = `You are a senior trial attorney analyzing litigation transcripts. You must respond with ONLY a valid JSON object. Do not include any markdown formatting, do not wrap the response in code fences, do not include any text before or after the JSON object. Your entire response must begin with { and end with }. If you cannot complete the analysis, still return a valid JSON object with an "error" key explaining why.
 
 Analyze the provided transcript(s) with the following lens:
 - Identify every moment where either side gained or lost strategic ground
@@ -16,7 +16,7 @@ Analyze the provided transcript(s) with the following lens:
 - Note any admissions, contradictions, or damaging testimony
 - Consider how the evidence presented (or not presented) shaped the jury's perception
 
-Return your analysis as a JSON object with the following keys:
+The JSON object must use exactly these top-level keys:
 {
   "caseSnapshot": { "caseName", "court", "parties", "outcome", "bottomLine" },
   "wentWell": [ { "category", "title", "detail", "cite" } ],
@@ -29,8 +29,7 @@ Return your analysis as a JSON object with the following keys:
 }
 
 "credibility" must be exactly one of: "Strong", "Mixed", "Weak".
-"ruling" must be "Sustained" or "Overruled" (or describe briefly if neither applies).
-Return only valid JSON. No markdown, no preamble, no explanation outside the JSON object.`;
+"ruling" must be "Sustained" or "Overruled" (or describe briefly if neither applies).`;
 
 export const Route = createFileRoute("/api/analyze")({
   server: {

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, AlertTriangle } from "lucide-react";
 
 interface Props {
   icon: ReactNode;
@@ -9,6 +9,7 @@ interface Props {
   defaultOpen?: boolean;
   children: ReactNode;
   accent?: "gold" | "success" | "destructive" | "warning";
+  missing?: boolean;
 }
 
 const accentMap = {
@@ -18,7 +19,7 @@ const accentMap = {
   warning: "text-warning",
 };
 
-export function Panel({ icon, title, subtitle, count, defaultOpen = true, children, accent = "gold" }: Props) {
+export function Panel({ icon, title, subtitle, count, defaultOpen = true, children, accent = "gold", missing = false }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section className="rounded-xl border border-border bg-card/60 backdrop-blur-sm overflow-hidden shadow-elegant">
@@ -43,7 +44,17 @@ export function Panel({ icon, title, subtitle, count, defaultOpen = true, childr
         </div>
         <ChevronDown className={`w-5 h-5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && <div className="px-6 pb-6 pt-1 border-t border-border/50">{children}</div>}
+      {open && (
+        <div className="px-6 pb-6 pt-1 border-t border-border/50">
+          {missing && (
+            <div className="mt-4 flex items-start gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/40 text-xs text-warning">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <span>No data returned for this section.</span>
+            </div>
+          )}
+          {children}
+        </div>
+      )}
     </section>
   );
 }
