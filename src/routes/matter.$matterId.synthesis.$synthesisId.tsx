@@ -119,6 +119,9 @@ function MatterSynthesisPage() {
   async function handleRerun() {
     setRerunning(true);
     try {
+      if (synth?.status === "error") {
+        await deleteSynthesisFromDb(synth.id);
+      }
       const newId = await submitSynthesis(matterId);
       navigate({
         to: "/matter/$matterId/synthesis/$synthesisId",
@@ -169,7 +172,17 @@ function MatterSynthesisPage() {
                 </div>
               )}
               {synth.status === "error" && synth.error && (
-                <p className="text-[13px] text-destructive mt-2">{synth.error}</p>
+                <div className="mt-2 border border-destructive/30 p-4 print:hidden">
+                  <p className="text-[13px] text-destructive mb-3">{synth.error}</p>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRetry(true)}
+                    disabled={rerunning}
+                    className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {rerunning ? "Retrying…" : "Retry synthesis"}
+                  </button>
+                </div>
               )}
               {synth.status === "complete" && synth.result && (
                 <MatterSynthesisView
@@ -183,6 +196,29 @@ function MatterSynthesisPage() {
           )}
         </section>
       </main>
+
+      <AlertDialog open={confirmRetry} onOpenChange={setConfirmRetry}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retry synthesis?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This deletes the failed synthesis row and starts a fresh run for this matter.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmRetry(false);
+                void handleRerun();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Retry synthesis
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
