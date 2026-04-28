@@ -33,6 +33,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/matter/$id")({
   head: () => ({
@@ -82,6 +92,7 @@ function MatterDetailPage() {
   const [synthError, setSynthError] = useState<string | null>(null);
   const [latestSynthesis, setLatestSynthesis] = useState<MatterSynthesisRow | null>(null);
   const [retryingSynthesis, setRetryingSynthesis] = useState(false);
+  const [confirmRetry, setConfirmRetry] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +131,39 @@ function MatterDetailPage() {
       descRef.current.focus();
     }
   }, [editingDesc]);
+
+  useEffect(() => {
+    if (!latestSynthesis) return;
+    if (latestSynthesis.status === "complete" || latestSynthesis.status === "error") return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const row = await getSynthesisFromDb(latestSynthesis.id);
+        if (cancelled || !row) return;
+        if (
+          row.status === "pending" &&
+          row.progress === 0 &&
+          Date.now() - row.createdAt > SYNTHESIS_START_TIMEOUT_MS
+        ) {
+          await markSynthesisProcessorNeverStarted(row.id);
+          setLatestSynthesis({
+            ...row,
+            status: "error",
+            error: "Synthesis processor never started. Click Re-run to try again.",
+            progressMessage: "Synthesis failed.",
+          });
+          return;
+        }
+        setLatestSynthesis(row);
+      } catch (e) {
+        console.error("[synthesis latest poll]", e);
+      }
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [latestSynthesis?.id, latestSynthesis?.status]);
 
   async function saveName() {
     if (!matter) return;
