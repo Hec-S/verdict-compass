@@ -133,7 +133,7 @@ export async function streamAnalyze(
         if (typeof evt.summary === "string" && !summary) summary = evt.summary;
         break;
       case "error":
-        serverError = (evt.message as string) || "Server error";
+        serverError = evt.stage ? `${(evt.message as string) || "Server error"} (stage: ${evt.stage})` : (evt.message as string) || "Server error";
         break;
     }
   };
