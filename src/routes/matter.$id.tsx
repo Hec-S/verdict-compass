@@ -238,6 +238,8 @@ function MatterDetailPage() {
     let synthesisId: string;
     try {
       synthesisId = await submitSynthesis(matter.id);
+      const created = await getSynthesisFromDb(synthesisId);
+      if (created) setLatestSynthesis(created);
     } catch (e) {
       setSynthError(e instanceof Error ? e.message : "Failed to start synthesis.");
       setSynthRunning(false);
@@ -481,7 +483,34 @@ function MatterDetailPage() {
                 </div>
               )}
               {synthError && !synthRunning && (
-                <p className="mb-6 text-[13px] text-destructive">{synthError}</p>
+                <div className="mb-6 border border-destructive/30 p-4">
+                  <p className="text-[13px] text-destructive mb-3">{synthError}</p>
+                  {latestSynthesis?.status === "error" && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRetry(true)}
+                      disabled={retryingSynthesis}
+                      className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {retryingSynthesis ? "Retrying…" : "Retry synthesis"}
+                    </button>
+                  )}
+                </div>
+              )}
+              {!synthRunning && !synthError && latestSynthesis?.status === "error" && (
+                <div className="mb-6 border border-destructive/30 p-4">
+                  <p className="text-[13px] text-destructive mb-3">
+                    {latestSynthesis.error ?? "Synthesis failed."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRetry(true)}
+                    disabled={retryingSynthesis}
+                    className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {retryingSynthesis ? "Retrying…" : "Retry synthesis"}
+                  </button>
+                </div>
               )}
 
               {/* Cases list */}
