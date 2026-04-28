@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as NewRouteImport } from './routes/new'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ReportIdRouteImport } from './routes/report.$id'
+import { Route as CaseIdRouteImport } from './routes/case.$id'
 import { Route as AnalyzingJobIdRouteImport } from './routes/analyzing.$jobId'
 import { Route as ApiAnalyzeSubmitRouteImport } from './routes/api/analyze.submit'
 import { Route as ApiAnalyzeProcessRouteImport } from './routes/api/analyze.process'
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const ReportIdRoute = ReportIdRouteImport.update({
   id: '/report/$id',
   path: '/report/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CaseIdRoute = CaseIdRouteImport.update({
+  id: '/case/$id',
+  path: '/case/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AnalyzingJobIdRoute = AnalyzingJobIdRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/new': typeof NewRoute
   '/analyzing/$jobId': typeof AnalyzingJobIdRoute
+  '/case/$id': typeof CaseIdRoute
   '/report/$id': typeof ReportIdRoute
   '/api/analyze/process': typeof ApiAnalyzeProcessRoute
   '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/new': typeof NewRoute
   '/analyzing/$jobId': typeof AnalyzingJobIdRoute
+  '/case/$id': typeof CaseIdRoute
   '/report/$id': typeof ReportIdRoute
   '/api/analyze/process': typeof ApiAnalyzeProcessRoute
   '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/new': typeof NewRoute
   '/analyzing/$jobId': typeof AnalyzingJobIdRoute
+  '/case/$id': typeof CaseIdRoute
   '/report/$id': typeof ReportIdRoute
   '/api/analyze/process': typeof ApiAnalyzeProcessRoute
   '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
@@ -78,6 +87,7 @@ export interface FileRouteTypes {
     | '/'
     | '/new'
     | '/analyzing/$jobId'
+    | '/case/$id'
     | '/report/$id'
     | '/api/analyze/process'
     | '/api/analyze/submit'
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/new'
     | '/analyzing/$jobId'
+    | '/case/$id'
     | '/report/$id'
     | '/api/analyze/process'
     | '/api/analyze/submit'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/new'
     | '/analyzing/$jobId'
+    | '/case/$id'
     | '/report/$id'
     | '/api/analyze/process'
     | '/api/analyze/submit'
@@ -103,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   NewRoute: typeof NewRoute
   AnalyzingJobIdRoute: typeof AnalyzingJobIdRoute
+  CaseIdRoute: typeof CaseIdRoute
   ReportIdRoute: typeof ReportIdRoute
   ApiAnalyzeProcessRoute: typeof ApiAnalyzeProcessRoute
   ApiAnalyzeSubmitRoute: typeof ApiAnalyzeSubmitRoute
@@ -129,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/report/$id'
       fullPath: '/report/$id'
       preLoaderRoute: typeof ReportIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/case/$id': {
+      id: '/case/$id'
+      path: '/case/$id'
+      fullPath: '/case/$id'
+      preLoaderRoute: typeof CaseIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/analyzing/$jobId': {
@@ -159,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   NewRoute: NewRoute,
   AnalyzingJobIdRoute: AnalyzingJobIdRoute,
+  CaseIdRoute: CaseIdRoute,
   ReportIdRoute: ReportIdRoute,
   ApiAnalyzeProcessRoute: ApiAnalyzeProcessRoute,
   ApiAnalyzeSubmitRoute: ApiAnalyzeSubmitRoute,
