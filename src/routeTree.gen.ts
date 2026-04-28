@@ -9,11 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as NewRouteImport } from './routes/new'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ReportIdRouteImport } from './routes/report.$id'
+import { Route as AnalyzingJobIdRouteImport } from './routes/analyzing.$jobId'
 import { Route as ApiAnalyzeSubmitRouteImport } from './routes/api/analyze.submit'
 import { Route as ApiAnalyzeProcessRouteImport } from './routes/api/analyze.process'
 
+const NewRoute = NewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -22,6 +29,11 @@ const IndexRoute = IndexRouteImport.update({
 const ReportIdRoute = ReportIdRouteImport.update({
   id: '/report/$id',
   path: '/report/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyzingJobIdRoute = AnalyzingJobIdRouteImport.update({
+  id: '/analyzing/$jobId',
+  path: '/analyzing/$jobId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAnalyzeSubmitRoute = ApiAnalyzeSubmitRouteImport.update({
@@ -37,12 +49,16 @@ const ApiAnalyzeProcessRoute = ApiAnalyzeProcessRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/new': typeof NewRoute
+  '/analyzing/$jobId': typeof AnalyzingJobIdRoute
   '/report/$id': typeof ReportIdRoute
   '/api/analyze/process': typeof ApiAnalyzeProcessRoute
   '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/new': typeof NewRoute
+  '/analyzing/$jobId': typeof AnalyzingJobIdRoute
   '/report/$id': typeof ReportIdRoute
   '/api/analyze/process': typeof ApiAnalyzeProcessRoute
   '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
@@ -50,6 +66,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/new': typeof NewRoute
+  '/analyzing/$jobId': typeof AnalyzingJobIdRoute
   '/report/$id': typeof ReportIdRoute
   '/api/analyze/process': typeof ApiAnalyzeProcessRoute
   '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
@@ -58,14 +76,24 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/new'
+    | '/analyzing/$jobId'
     | '/report/$id'
     | '/api/analyze/process'
     | '/api/analyze/submit'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/report/$id' | '/api/analyze/process' | '/api/analyze/submit'
+  to:
+    | '/'
+    | '/new'
+    | '/analyzing/$jobId'
+    | '/report/$id'
+    | '/api/analyze/process'
+    | '/api/analyze/submit'
   id:
     | '__root__'
     | '/'
+    | '/new'
+    | '/analyzing/$jobId'
     | '/report/$id'
     | '/api/analyze/process'
     | '/api/analyze/submit'
@@ -73,6 +101,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  NewRoute: typeof NewRoute
+  AnalyzingJobIdRoute: typeof AnalyzingJobIdRoute
   ReportIdRoute: typeof ReportIdRoute
   ApiAnalyzeProcessRoute: typeof ApiAnalyzeProcessRoute
   ApiAnalyzeSubmitRoute: typeof ApiAnalyzeSubmitRoute
@@ -80,6 +110,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/new': {
+      id: '/new'
+      path: '/new'
+      fullPath: '/new'
+      preLoaderRoute: typeof NewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -92,6 +129,13 @@ declare module '@tanstack/react-router' {
       path: '/report/$id'
       fullPath: '/report/$id'
       preLoaderRoute: typeof ReportIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analyzing/$jobId': {
+      id: '/analyzing/$jobId'
+      path: '/analyzing/$jobId'
+      fullPath: '/analyzing/$jobId'
+      preLoaderRoute: typeof AnalyzingJobIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/analyze/submit': {
@@ -113,6 +157,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  NewRoute: NewRoute,
+  AnalyzingJobIdRoute: AnalyzingJobIdRoute,
   ReportIdRoute: ReportIdRoute,
   ApiAnalyzeProcessRoute: ApiAnalyzeProcessRoute,
   ApiAnalyzeSubmitRoute: ApiAnalyzeSubmitRoute,
@@ -120,3 +166,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
