@@ -1,8 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
-import { getSynthesisFromDb } from "@/lib/synthesis-db";
+import { MatterSynthesisView } from "@/components/verdict/MatterSynthesisView";
+import { Progress } from "@/components/ui/progress";
+import { getSynthesisFromDb, submitSynthesis } from "@/lib/synthesis-db";
+import { getMatterFromDb } from "@/lib/matters-db";
 import type { MatterSynthesisRow } from "@/lib/analysis-types";
+import type { CaseListRow } from "@/lib/cases-db";
 
 export const Route = createFileRoute(
   "/matter/$matterId/synthesis/$synthesisId",
@@ -15,17 +20,25 @@ export const Route = createFileRoute(
 
 function MatterSynthesisPage() {
   const { matterId, synthesisId } = Route.useParams();
+  const navigate = useNavigate();
   const [synth, setSynth] = useState<MatterSynthesisRow | null>(null);
+  const [cases, setCases] = useState<CaseListRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rerunning, setRerunning] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    getSynthesisFromDb(synthesisId)
-      .then((row) => {
+    setLoading(true);
+    Promise.all([getSynthesisFromDb(synthesisId), getMatterFromDb(matterId)])
+      .then(([row, matter]) => {
         if (cancelled) return;
-        if (!row) setError("Synthesis not found.");
-        else setSynth(row);
+        if (!row) {
+          setError("Synthesis not found.");
+        } else {
+          setSynth(row);
+          setCases(matter?.cases ?? []);
+        }
       })
       .catch((e) => {
         if (!cancelled)
@@ -37,13 +50,61 @@ function MatterSynthesisPage() {
     return () => {
       cancelled = true;
     };
-  }, [synthesisId]);
+  }, [synthesisId, matterId]);
+
+  // Poll while still processing.
+  useEffect(() => {
+    if (!synth) return;
+    if (synth.status === "complete" || synth.status === "error") return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const row = await getSynthesisFromDb(synthesisId);
+        if (cancelled || !row) return;
+        setSynth(row);
+        if (row.status === "complete" || row.status === "error") {
+          clearInterval(interval);
+        }
+      } catch (e) {
+        console.error("[synthesis poll]", e);
+      }
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [synth, synthesisId]);
+
+  const caseLabels = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of cases) {
+      m.set(c.id, c.snapshot?.caseName || c.caseName || c.id.slice(0, 8));
+    }
+    return m;
+  }, [cases]);
+
+  async function handleRerun() {
+    setRerunning(true);
+    try {
+      const newId = await submitSynthesis(matterId);
+      navigate({
+        to: "/matter/$matterId/synthesis/$synthesisId",
+        params: { matterId, synthesisId: newId },
+        replace: true,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to start re-run.");
+      setRerunning(false);
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
-      <SiteHeader />
+      <div className="print:hidden">
+        <SiteHeader />
+      </div>
       <main className="flex-1">
-        <section className="max-w-[880px] mx-auto px-8 pt-10 pb-2">
+        <section className="max-w-[880px] mx-auto px-8 pt-10 pb-2 print:hidden">
           <Link
             to="/matter/$id"
             params={{ id: matterId }}
@@ -52,43 +113,38 @@ function MatterSynthesisPage() {
             ‹ Back to matter
           </Link>
         </section>
-        <section className="max-w-[880px] mx-auto px-8 pt-6 pb-8">
+        <section className="max-w-[880px] mx-auto px-8 pt-6 pb-8 print:max-w-none print:px-6 print:pt-2">
           {loading && <p className="text-[13px] text-muted-foreground">Loading…</p>}
           {error && !loading && (
             <p className="text-[13px] text-destructive">{error}</p>
           )}
           {synth && !loading && (
             <>
-              <h1 className="text-[22px] font-medium tracking-[-0.01em] mb-2">
+              <h1 className="text-[22px] font-medium tracking-[-0.01em] mb-2 print:text-[18px]">
                 Matter Synthesis
               </h1>
               <p className="text-[12px] text-muted-foreground mb-6">
                 Status: {synth.status} · {synth.caseIds.length}{" "}
                 {synth.caseIds.length === 1 ? "case" : "cases"} included
               </p>
-              {synth.status !== "complete" && (
-                <p className="text-[13px] text-muted-foreground">
-                  {synth.progressMessage ?? "Preparing…"}
-                </p>
+              {synth.status !== "complete" && synth.status !== "error" && (
+                <div className="mb-6 border border-border p-4">
+                  <p className="text-[13px] text-foreground mb-2">
+                    {synth.progressMessage ?? "Preparing…"}
+                  </p>
+                  <Progress value={synth.progress} />
+                </div>
               )}
               {synth.status === "error" && synth.error && (
                 <p className="text-[13px] text-destructive mt-2">{synth.error}</p>
               )}
               {synth.status === "complete" && synth.result && (
-                <div className="text-[13px] text-muted-foreground border border-border p-4 rounded">
-                  <p className="mb-2">
-                    Synthesis result loaded. The full <code>MatterSynthesisView</code>{" "}
-                    component will render here in the next iteration.
-                  </p>
-                  <details className="mt-3">
-                    <summary className="cursor-pointer text-foreground">
-                      Raw JSON
-                    </summary>
-                    <pre className="mt-2 max-h-[60vh] overflow-auto text-[11px] whitespace-pre-wrap break-words">
-                      {JSON.stringify(synth.result, null, 2)}
-                    </pre>
-                  </details>
-                </div>
+                <MatterSynthesisView
+                  synthesis={synth.result}
+                  caseLabels={caseLabels}
+                  onRerun={handleRerun}
+                  rerunDisabled={rerunning}
+                />
               )}
             </>
           )}
