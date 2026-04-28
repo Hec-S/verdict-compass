@@ -53,6 +53,53 @@ export type Database = {
         }
         Relationships: []
       }
+      cases: {
+        Row: {
+          archived: boolean
+          case_name: string
+          case_snapshot: Json | null
+          created_at: string
+          id: string
+          job_id: string | null
+          outcome: string | null
+          result: Json
+          starred: boolean
+          user_id: string | null
+        }
+        Insert: {
+          archived?: boolean
+          case_name?: string
+          case_snapshot?: Json | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          outcome?: string | null
+          result: Json
+          starred?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          archived?: boolean
+          case_name?: string
+          case_snapshot?: Json | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          outcome?: string | null
+          result?: Json
+          starred?: boolean
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cases_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

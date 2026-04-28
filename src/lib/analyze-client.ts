@@ -8,6 +8,7 @@ export interface JobProgress {
 export interface JobResult {
   result: Record<string, unknown>;
   failedSections: string[];
+  caseId: string | null;
 }
 
 export class AnalysisFailedError extends Error {
@@ -22,6 +23,82 @@ export class AnalysisTimeoutError extends Error {
     super("Analysis took too long. Please try again.");
     this.name = "AnalysisTimeoutError";
   }
+}
+
+/** Submit a transcript and trigger background processing. Returns the jobId immediately. */
+export async function submitAnalysis(
+  caseName: string,
+  transcript: string,
+): Promise<string> {
+  const submitRes = await fetch("/api/analyze/submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ caseName, transcript }),
+  });
+  if (!submitRes.ok) {
+    const text = await submitRes.text().catch(() => "");
+    throw new AnalysisFailedError(`Failed to submit job: ${text || submitRes.status}`);
+  }
+  const { jobId, error: submitError } = (await submitRes.json()) as {
+    jobId?: string;
+    error?: string;
+  };
+  if (!jobId) throw new AnalysisFailedError(submitError ?? "Submit returned no jobId");
+
+  fetch("/api/analyze/process", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId }),
+    keepalive: true,
+  }).catch((err) => console.warn("[analyze] process trigger error:", err));
+
+  return jobId;
+}
+
+/** Poll an existing job until terminal state. */
+export function pollJob(
+  jobId: string,
+  onProgress?: (p: JobProgress) => void,
+): Promise<JobResult> {
+  return new Promise<JobResult>((resolve, reject) => {
+    const POLL_MS = 3000;
+    const TIMEOUT_MS = 5 * 60 * 1000;
+    const started = Date.now();
+
+    const interval = window.setInterval(async () => {
+      if (Date.now() - started > TIMEOUT_MS) {
+        window.clearInterval(interval);
+        reject(new AnalysisTimeoutError());
+        return;
+      }
+      const { data, error } = await supabase
+        .from("analysis_jobs")
+        .select("status, progress, progress_message, result, failed_sections, error")
+        .eq("id", jobId)
+        .single();
+      if (error || !data) return;
+
+      onProgress?.({ progress: data.progress ?? 0, message: data.progress_message ?? "" });
+
+      if (data.status === "complete") {
+        window.clearInterval(interval);
+        const fullResult = (data.result as Record<string, unknown>) ?? {};
+        const caseId =
+          typeof fullResult.__caseId === "string" ? (fullResult.__caseId as string) : null;
+        if ("__caseId" in fullResult) delete fullResult.__caseId;
+        resolve({
+          result: fullResult,
+          failedSections: Array.isArray(data.failed_sections)
+            ? (data.failed_sections as string[])
+            : [],
+          caseId,
+        });
+      } else if (data.status === "error") {
+        window.clearInterval(interval);
+        reject(new AnalysisFailedError(data.error ?? "Analysis failed."));
+      }
+    }, POLL_MS);
+  });
 }
 
 /**
@@ -91,11 +168,17 @@ export async function runAnalysis(
 
       if (data.status === "complete") {
         window.clearInterval(interval);
+        const fullResult = (data.result as Record<string, unknown>) ?? {};
+        const caseId =
+          typeof fullResult.__caseId === "string" ? (fullResult.__caseId as string) : null;
+        // Strip the helper field before handing back to the UI/normalizer.
+        if ("__caseId" in fullResult) delete fullResult.__caseId;
         resolve({
-          result: (data.result as Record<string, unknown>) ?? {},
+          result: fullResult,
           failedSections: Array.isArray(data.failed_sections)
             ? (data.failed_sections as string[])
             : [],
+          caseId,
         });
       } else if (data.status === "error") {
         window.clearInterval(interval);

@@ -243,15 +243,45 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
       }
     }
 
+    // Persist the completed analysis to the cases library so it's available
+    // from the dashboard and via /case/:id.
+    let caseId: string | null = null;
+    try {
+      const snapshot = (merged as Record<string, unknown>).caseSnapshot as
+        | Record<string, unknown>
+        | undefined;
+      const { data: inserted, error: insertErr } = await supabase
+        .from("cases")
+        .insert({
+          case_name: caseName,
+          job_id: jobId,
+          result: merged,
+          case_snapshot: snapshot ?? null,
+          outcome:
+            typeof snapshot?.outcome === "string" ? (snapshot.outcome as string) : null,
+        })
+        .select("id")
+        .single();
+      if (insertErr) {
+        console.error("[process] case insert failed:", insertErr.message);
+      } else {
+        caseId = inserted?.id ?? null;
+      }
+    } catch (err) {
+      console.error("[process] case insert exception:", err);
+    }
+
     await updateJob(supabase, jobId, {
       status: "complete",
       progress: 100,
       progress_message: "Analysis complete.",
-      result: merged,
+      result: caseId ? { ...merged, __caseId: caseId } : merged,
       failed_sections: failed,
       transcript_text: null,
     });
-    console.log(`[process] job ${jobId} complete (failed: ${failed.join(",") || "none"})`);
+    console.log(
+      `[process] job ${jobId} complete (case=${caseId ?? "none"}, failed: ${failed.join(",") || "none"})`,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[process] job ${jobId} fatal:`, message);
