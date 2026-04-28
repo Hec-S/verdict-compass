@@ -27,6 +27,17 @@ export class MalformedJsonError extends Error {
   }
 }
 
+export class ServerAnalyzeError extends Error {
+  status?: number;
+  stage?: string;
+  constructor(message: string, status?: number, stage?: string) {
+    super(stage ? `${message} (stage: ${stage})` : message);
+    this.name = "ServerAnalyzeError";
+    this.status = status;
+    this.stage = stage;
+  }
+}
+
 export interface ProgressEvent {
   step: number;
   total: number;
@@ -45,15 +56,20 @@ export async function streamAnalyze(
   input: { transcript?: string; summary?: string },
   onProgress?: (p: ProgressEvent) => void,
 ): Promise<AnalyzeResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
   let res: Response;
   try {
     res = await fetch("/api/analyze", {
       method: "POST",
+      signal: controller.signal,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ caseName, ...input }),
     });
   } catch (e) {
     throw new TimeoutError();
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (res.status === 504 || res.status === 502 || res.status === 503) {
@@ -61,7 +77,13 @@ export async function streamAnalyze(
   }
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || `Request failed (${res.status})`);
+    try {
+      const payload = JSON.parse(text) as { message?: string; stage?: string };
+      throw new ServerAnalyzeError(payload.message || `Request failed (${res.status})`, res.status, payload.stage);
+    } catch (err) {
+      if (err instanceof ServerAnalyzeError) throw err;
+      throw new ServerAnalyzeError(text || `Request failed (${res.status})`, res.status);
+    }
   }
 
   const reader = res.body.getReader();
