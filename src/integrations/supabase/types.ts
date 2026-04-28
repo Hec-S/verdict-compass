@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           case_name: string
           created_at: string
+          debug_trace: Json | null
           error: string | null
           failed_sections: Json
           id: string
@@ -30,6 +31,7 @@ export type Database = {
         Insert: {
           case_name?: string
           created_at?: string
+          debug_trace?: Json | null
           error?: string | null
           failed_sections?: Json
           id?: string
@@ -42,6 +44,7 @@ export type Database = {
         Update: {
           case_name?: string
           created_at?: string
+          debug_trace?: Json | null
           error?: string | null
           failed_sections?: Json
           id?: string
@@ -59,6 +62,7 @@ export type Database = {
           case_name: string
           case_snapshot: Json | null
           created_at: string
+          debug_trace: Json | null
           id: string
           job_id: string | null
           outcome: string | null
@@ -71,6 +75,7 @@ export type Database = {
           case_name?: string
           case_snapshot?: Json | null
           created_at?: string
+          debug_trace?: Json | null
           id?: string
           job_id?: string | null
           outcome?: string | null
@@ -83,6 +88,7 @@ export type Database = {
           case_name?: string
           case_snapshot?: Json | null
           created_at?: string
+          debug_trace?: Json | null
           id?: string
           job_id?: string | null
           outcome?: string | null
