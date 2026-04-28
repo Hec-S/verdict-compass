@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { Progress } from "@/components/ui/progress";
 import { pollJob, AnalysisFailedError, AnalysisTimeoutError } from "@/lib/analyze-client";
+import { linkCaseToJob } from "@/lib/debug-trace";
 
 export const Route = createFileRoute("/analyzing/$jobId")({
   head: () => ({
@@ -28,6 +29,7 @@ function AnalyzingPage() {
       .then((res) => {
         if (cancelled) return;
         if (res.caseId) {
+          linkCaseToJob(res.caseId, jobId);
           navigate({ to: "/case/$id", params: { id: res.caseId }, replace: true });
         } else {
           setError("Analysis finished but the case could not be saved. Try again.");

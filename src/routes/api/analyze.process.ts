@@ -5,6 +5,37 @@ import { USER_ROLE } from "@/lib/user-role";
 
 const InputSchema = z.object({ jobId: z.string().uuid() });
 
+// ---------- DEBUG TRACE ----------
+// Append-only structured trace persisted to analysis_jobs.debug_trace and
+// later copied to cases.debug_trace. Purely additive — analysis logic does
+// not consume it. The case page exposes it via a "Download Debug Trace"
+// button.
+interface TraceEvent {
+  ts: string;
+  stage: string;
+  data: Record<string, unknown>;
+}
+function nowIso() {
+  return new Date().toISOString();
+}
+function makeTrace() {
+  const events: TraceEvent[] = [];
+  return {
+    events,
+    add(stage: string, data: Record<string, unknown>) {
+      const ev: TraceEvent = { ts: nowIso(), stage, data };
+      events.push(ev);
+      try {
+        console.log(
+          `===== STAGE: ${stage} =====\n` + JSON.stringify(data, null, 2),
+        );
+      } catch {
+        console.log(`===== STAGE: ${stage} ===== (unserializable)`);
+      }
+    },
+  };
+}
+
 function getEnv(key: string): string | undefined {
   const g = globalThis as unknown as {
     process?: { env?: Record<string, string | undefined> };
@@ -209,6 +240,8 @@ async function updateJob(
 
 async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
   console.log(`[process] starting job ${jobId}`);
+  const trace = makeTrace();
+  trace.add("worker_start", { jobId });
   try {
     const { data: job, error: fetchErr } = await supabase
       .from("analysis_jobs")
@@ -222,6 +255,19 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
     }
     const transcript = job.transcript_text ?? "";
     const caseName = job.case_name ?? "";
+    trace.add("server_received_transcript", {
+      caseName,
+      totalLength: transcript.length,
+      first2000: transcript.slice(0, 2000),
+      last2000: transcript.slice(-2000),
+      note:
+        "Server-side view of the transcript after submit-route cleanTranscript + 60k cap. The browser-side raw extraction trace is captured separately on the client and merged into the downloaded debug file.",
+    });
+    trace.add("classification", {
+      detected: null,
+      reason:
+        "No document-type classification step exists in the pipeline. Every upload is treated as a litigation transcript. See CLASSIFICATION.md.",
+    });
 
     // Call 0 — compression
     await updateJob(supabase, jobId, {
@@ -229,21 +275,40 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
       progress: 10,
       progress_message: "Reading the transcript… (1/5)",
     });
+    const compressionSystem = "You produce dense, faithful litigation summaries.";
+    const compressionUser = `${COMPRESSION_PROMPT}\n\nCase label: ${caseName}\n\nTranscript:\n${transcript}`;
+    trace.add("llm_request:compression", {
+      model: "claude-sonnet-4-5",
+      max_tokens: 2000,
+      system: compressionSystem,
+      user: compressionUser,
+    });
     let summary = "";
+    let compressionRaw = "";
     try {
       const t = Date.now();
-      summary = (
-        await callClaude(
-          apiKey,
-          "You produce dense, faithful litigation summaries.",
-          `${COMPRESSION_PROMPT}\n\nCase label: ${caseName}\n\nTranscript:\n${transcript}`,
-          2000,
-        )
-      ).trim();
+      compressionRaw = await callClaude(
+        apiKey,
+        compressionSystem,
+        compressionUser,
+        2000,
+      );
+      summary = compressionRaw.trim();
       console.log(`[process] compression ok in ${Date.now() - t}ms (${summary.length} chars)`);
+      trace.add("llm_response:compression", {
+        durationMs: Date.now() - t,
+        rawLength: compressionRaw.length,
+        raw: compressionRaw,
+        summaryLength: summary.length,
+      });
     } catch (err) {
       console.error("[process] compression failed, using raw slice:", err);
       summary = transcript.slice(0, 20_000);
+      trace.add("llm_response:compression_error", {
+        error: err instanceof Error ? err.message : String(err),
+        fallback: "transcript.slice(0, 20000)",
+        summaryLength: summary.length,
+      });
     }
 
     const merged: Record<string, unknown> = {};
@@ -255,6 +320,12 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
         progress_message: section.label,
       });
       const userMessage = `${FRAMING}\n\n${section.instructions ? section.instructions + "\n\n" : ""}Analyze this litigation transcript summary and return ONLY this JSON structure with no other text:\n${section.schema}\n\nCase label: ${caseName}\n\nSummary:\n${summary}`;
+      trace.add(`llm_request:${section.key}`, {
+        model: "claude-sonnet-4-5",
+        max_tokens: 3000,
+        system: SYSTEM_PROMPT,
+        user: userMessage,
+      });
       try {
         const t = Date.now();
         console.log(
@@ -262,7 +333,13 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
         );
         const raw = await callClaude(apiKey, SYSTEM_PROMPT, userMessage, 3000);
         console.log(`[process] section=${section.key} ok in ${Date.now() - t}ms`);
+        trace.add(`llm_response:${section.key}`, {
+          durationMs: Date.now() - t,
+          rawLength: raw.length,
+          raw,
+        });
         let parsed = extractJSON(raw, section.key);
+        trace.add(`parsed:${section.key}`, { parsed });
 
         // Findings-specific retry: if Claude returned empty wentWell/wentPoorly,
         // re-ask with a stripped-down prompt that demands 3-5 items each.
@@ -283,14 +360,28 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
             const trimmedSummary =
               summary.length > 20_000 ? summary.slice(0, 20_000) : summary;
             const retryPrompt = `You support DEFENSE COUNSEL. Identify 3-5 specific things that helped the defense and 3-5 specific things that hurt or threatened the defense in this trial. Even if the defense won, find 3 things that could have gone better. Even if the defense lost, find 3 things they did well.\n\nReturn ONLY this JSON, no markdown, no prose:\n{"wentWell":[{"category":"","title":"","detail":"","cite":""}],"wentPoorly":[{"category":"","title":"","detail":"","cite":"","fix":""}]}\n\nTRANSCRIPT SUMMARY:\n${trimmedSummary}`;
+            trace.add("llm_request:findings_retry", {
+              model: "claude-sonnet-4-5",
+              max_tokens: 3000,
+              system: SYSTEM_PROMPT,
+              user: retryPrompt,
+              reason: `findings returned empty (wentWell=${ww}, wentPoorly=${wp})`,
+            });
             try {
+              const tr = Date.now();
               const retryRaw = await callClaude(
                 apiKey,
                 SYSTEM_PROMPT,
                 retryPrompt,
                 3000,
               );
+              trace.add("llm_response:findings_retry", {
+                durationMs: Date.now() - tr,
+                rawLength: retryRaw.length,
+                raw: retryRaw,
+              });
               const retryParsed = extractJSON(retryRaw, "findings_retry");
+              trace.add("parsed:findings_retry", { parsed: retryParsed });
               const rww = Array.isArray(
                 (retryParsed as { wentWell?: unknown[] }).wentWell,
               )
@@ -309,6 +400,10 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
               parsed = retryParsed;
             } catch (retryErr) {
               console.error(`[process] findings_retry failed:`, retryErr);
+              trace.add("llm_response:findings_retry_error", {
+                error:
+                  retryErr instanceof Error ? retryErr.message : String(retryErr),
+              });
             }
           }
         }
@@ -316,10 +411,19 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
         Object.assign(merged, parsed);
       } catch (err) {
         console.error(`[process] section=${section.key} failed:`, err);
+        trace.add(`section_failed:${section.key}`, {
+          error: err instanceof Error ? err.message : String(err),
+          fallback: section.fallback,
+        });
         Object.assign(merged, section.fallback);
         failed.push(section.key);
       }
     }
+
+    trace.add("merged_result", {
+      failedSections: failed,
+      result: merged,
+    });
 
     // Persist the completed analysis to the cases library so it's available
     // from the dashboard and via /case/:id.
@@ -337,16 +441,22 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
           case_snapshot: snapshot ?? null,
           outcome:
             typeof snapshot?.outcome === "string" ? (snapshot.outcome as string) : null,
+          debug_trace: trace.events,
         })
         .select("id")
         .single();
       if (insertErr) {
         console.error("[process] case insert failed:", insertErr.message);
+        trace.add("cases_insert_error", { error: insertErr.message });
       } else {
         caseId = inserted?.id ?? null;
+        trace.add("cases_inserted", { caseId });
       }
     } catch (err) {
       console.error("[process] case insert exception:", err);
+      trace.add("cases_insert_exception", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     await updateJob(supabase, jobId, {
@@ -356,6 +466,7 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
       result: caseId ? { ...merged, __caseId: caseId } : merged,
       failed_sections: failed,
       transcript_text: null,
+      debug_trace: trace.events,
     });
     console.log(
       `[process] job ${jobId} complete (case=${caseId ?? "none"}, failed: ${failed.join(",") || "none"})`,
@@ -363,10 +474,12 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[process] job ${jobId} fatal:`, message);
+    trace.add("worker_fatal", { error: message });
     await updateJob(supabase, jobId, {
       status: "error",
       error: message,
       progress_message: "Analysis failed.",
+      debug_trace: trace.events,
     });
   }
 }
