@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { normalizeResult } from "./normalize-result";
 import type { CaseSnapshot, StoredCase } from "./analysis-types";
+import type { ClientTraceEvent } from "./debug-trace";
 
 export interface CaseListRow {
   id: string;
@@ -30,12 +31,15 @@ export async function listCasesFromDb(): Promise<CaseListRow[]> {
 export async function getCaseFromDb(id: string): Promise<StoredCase | null> {
   const { data, error } = await supabase
     .from("cases")
-    .select("id, case_name, created_at, result")
+    .select("id, case_name, created_at, result, debug_trace")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
   const { result, missing } = normalizeResult(data.result);
+  const serverTrace = Array.isArray(data.debug_trace)
+    ? (data.debug_trace as unknown as ClientTraceEvent[])
+    : [];
   return {
     id: data.id,
     caseName: data.case_name,
@@ -43,5 +47,6 @@ export async function getCaseFromDb(id: string): Promise<StoredCase | null> {
     truncated: false,
     result,
     missingSections: missing,
+    serverTrace,
   };
 }
