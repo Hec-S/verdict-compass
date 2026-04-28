@@ -109,7 +109,7 @@ async function callClaude(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: maxTokens,
         system,
         messages: [{ role: "user", content: userMessage }],
@@ -174,8 +174,19 @@ export const Route = createFileRoute("/api/analyze")({
         // {type:"error", message}
         const stream = new ReadableStream<Uint8Array>({
           async start(controller) {
+            let closed = false;
             const send = (obj: unknown) => {
+              if (closed) return;
+              try {
               controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+              } catch {
+                closed = true;
+              }
+            };
+            const closeOnce = () => {
+              if (closed) return;
+              closed = true;
+              try { controller.close(); } catch { /* already closed */ }
             };
 
             const merged: Record<string, unknown> = {};
@@ -202,7 +213,7 @@ export const Route = createFileRoute("/api/analyze")({
                     apiKey,
                     "You produce dense, faithful litigation summaries.",
                     `${COMPRESSION_PROMPT}\n\nCase label: ${parsedInput.caseName}\n\nTranscript:\n${rawTranscript}`,
-                    1500,
+                    2000,
                   );
                   console.log("Compression call completed in", Date.now() - t0, "ms");
                   console.log(`[analyze] compression raw length=${raw.length}`);
@@ -229,7 +240,7 @@ export const Route = createFileRoute("/api/analyze")({
                 try {
                   console.log(`Starting analysis call ${i + 1} (${section.key})...`);
                   const t = Date.now();
-                  const raw = await callClaude(apiKey, SYSTEM_PROMPT, userMessage, 1500);
+                  const raw = await callClaude(apiKey, SYSTEM_PROMPT, userMessage, 3000);
                   console.log(`Call ${i + 1} (${section.key}) completed in`, Date.now() - t, "ms");
                   console.log(`[analyze] section=${section.key} raw response:`, raw);
                   const parsed = extractJSON(raw);
@@ -251,11 +262,11 @@ export const Route = createFileRoute("/api/analyze")({
                 timedOutSections,
                 summary,
               });
-              controller.close();
+              closeOnce();
             } catch (e) {
               console.error("[analyze] fatal:", e);
               send({ type: "error", message: e instanceof Error ? e.message : "Unknown error", stage: currentStage });
-              controller.close();
+              closeOnce();
             }
           },
         });
