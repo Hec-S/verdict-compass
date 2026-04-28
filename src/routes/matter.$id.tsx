@@ -251,6 +251,19 @@ function MatterDetailPage() {
       try {
         const row = await getSynthesisFromDb(synthesisId);
         if (!row) continue;
+        if (
+          row.status === "pending" &&
+          row.progress === 0 &&
+          Date.now() - row.createdAt > SYNTHESIS_START_TIMEOUT_MS
+        ) {
+          await markSynthesisProcessorNeverStarted(row.id);
+          const message = "Synthesis processor never started. Click Re-run to try again.";
+          setLatestSynthesis({ ...row, status: "error", error: message });
+          setSynthError(message);
+          setSynthRunning(false);
+          return;
+        }
+        setLatestSynthesis(row);
         setSynthProgress(row.progress);
         if (row.progressMessage) setSynthMessage(row.progressMessage);
         if (row.status === "complete") {
@@ -271,6 +284,21 @@ function MatterDetailPage() {
     }
     setSynthError("Synthesis timed out. Please try again.");
     setSynthRunning(false);
+  }
+
+  async function retryErroredSynthesis() {
+    if (!matter || !latestSynthesis || latestSynthesis.status !== "error") return;
+    setRetryingSynthesis(true);
+    setSynthError(null);
+    try {
+      await deleteSynthesisFromDb(latestSynthesis.id);
+      setLatestSynthesis(null);
+      await runSynthesis();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to retry synthesis.");
+    } finally {
+      setRetryingSynthesis(false);
+    }
   }
 
   return (
