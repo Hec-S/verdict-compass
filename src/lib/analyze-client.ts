@@ -36,11 +36,13 @@ export interface ProgressEvent {
 export interface AnalyzeResult {
   result: Record<string, unknown>;
   failedSections: string[];
+  timedOutSections: string[];
+  summary: string;
 }
 
 export async function streamAnalyze(
   caseName: string,
-  transcript: string,
+  input: { transcript?: string; summary?: string },
   onProgress?: (p: ProgressEvent) => void,
 ): Promise<AnalyzeResult> {
   let res: Response;
@@ -48,7 +50,7 @@ export async function streamAnalyze(
     res = await fetch("/api/analyze", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ caseName, transcript }),
+      body: JSON.stringify({ caseName, ...input }),
     });
   } catch (e) {
     throw new TimeoutError();
@@ -66,7 +68,9 @@ export async function streamAnalyze(
   const decoder = new TextDecoder();
   let buffer = "";
   const failedSections: string[] = [];
+  const timedOutSections: string[] = [];
   let finalResult: Record<string, unknown> | null = null;
+  let summary = "";
   let serverError: string | null = null;
 
   const handleLine = (line: string) => {
@@ -89,6 +93,9 @@ export async function streamAnalyze(
       case "section_failed":
         failedSections.push(evt.key as string);
         break;
+      case "summary":
+        if (typeof evt.summary === "string") summary = evt.summary;
+        break;
       case "done":
         finalResult = evt.result as Record<string, unknown>;
         if (Array.isArray(evt.failedSections)) {
@@ -96,6 +103,12 @@ export async function streamAnalyze(
             if (!failedSections.includes(k as string)) failedSections.push(k as string);
           }
         }
+        if (Array.isArray(evt.timedOutSections)) {
+          for (const k of evt.timedOutSections) {
+            if (!timedOutSections.includes(k as string)) timedOutSections.push(k as string);
+          }
+        }
+        if (typeof evt.summary === "string" && !summary) summary = evt.summary;
         break;
       case "error":
         serverError = (evt.message as string) || "Server error";
@@ -118,5 +131,5 @@ export async function streamAnalyze(
 
   if (serverError) throw new Error(serverError);
   if (!finalResult) throw new TimeoutError();
-  return { result: finalResult, failedSections };
+  return { result: finalResult, failedSections, timedOutSections, summary };
 }
