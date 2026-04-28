@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { USER_ROLE } from "@/lib/user-role";
 
 const InputSchema = z.object({ jobId: z.string().uuid() });
 
@@ -12,7 +13,16 @@ function getEnv(key: string): string | undefined {
   return g.process?.env?.[key] ?? g.Deno?.env?.get?.(key);
 }
 
+const DEFENSE_FRAMING = `CRITICAL FRAMING: The user of this analysis is DEFENSE COUNSEL. Every observation, evaluation, and recommendation must be written from the defense's perspective. "What went well" means what went well FOR THE DEFENSE. "What didn't go well" means what hurt the defense. Witness performance evaluates how each witness helped or hurt the defense's case. Strategic recommendations are written as direct advice to defense counsel for retrial, appeal, or future similar cases. Never write from the plaintiff's perspective. Never describe outcomes neutrally. The defense is "we" / "our client" — the plaintiff is "opposing counsel" / "the plaintiff."`;
+
+const ROLE_FRAMING: Record<string, string> = {
+  defense: DEFENSE_FRAMING,
+};
+const FRAMING = ROLE_FRAMING[USER_ROLE] ?? DEFENSE_FRAMING;
+
 const SYSTEM_PROMPT = `You are a senior trial attorney with 25 years of civil litigation experience analyzing litigation transcripts.
+
+${FRAMING}
 
 Respond with ONLY a valid JSON object. Do not include any markdown, do not wrap the response in code fences, do not include any text before or after the JSON object. Your entire response must begin with { and end with }.
 
@@ -21,7 +31,11 @@ Respond with ONLY a valid JSON object. Do not include any markdown, do not wrap 
 
 If you cannot complete a section, return the requested JSON shape with empty arrays/strings rather than prose.`;
 
-const COMPRESSION_PROMPT = `You are a litigation analyst. Read this court transcript and produce a dense structured summary that preserves all legally significant content. Include:
+const COMPRESSION_PROMPT = `You are a litigation analyst supporting DEFENSE COUNSEL. Read this court transcript and produce a dense structured summary that preserves all legally significant content. Flag every detail that helps or hurts the defense.
+
+${FRAMING}
+
+Include:
 - Every witness name, role, and key statements they made
 - Every objection, the grounds stated, and the ruling
 - Every admission or damaging concession made by any witness
@@ -38,6 +52,7 @@ interface SectionSpec {
   progress: number;
   schema: string;
   fallback: Record<string, unknown>;
+  instructions?: string;
 }
 
 const SECTIONS: SectionSpec[] = [
@@ -54,7 +69,7 @@ const SECTIONS: SectionSpec[] = [
     "defendant": "string - defendant or real party in interest name only",
     "filed": "string - date the underlying incident or filing occurred, e.g. 'September 20, 2019'",
     "outcome": "string - final outcome in 2-5 words, e.g. 'Defense verdict (reinstated)'",
-    "bottomLine": "string - ONE sentence, max 25 words, plain English, lead with core fact not procedure. No medical details, expert names, or procedural history."
+    "bottomLine": "string - ONE sentence, max 25 words, written from the DEFENSE perspective. If defense won, frame it as a win. If defense lost, frame it factually but neutrally — never celebrate a defense loss. This is the one-sentence headline a defense attorney would use to brief their partner on the case. Plain English, lead with core fact not procedure. No medical details, expert names, or procedural history."
   },
   "criticalMoments": [ { "page": "", "parties": "", "what": "", "why": "" } ]
 }`,
@@ -76,6 +91,9 @@ const SECTIONS: SectionSpec[] = [
     key: "findings",
     label: "Evaluating wins and losses… (3/5)",
     progress: 50,
+    instructions: `"wentWell" = moments, tactics, evidence, or rulings that benefited the DEFENSE (e.g. successful impeachment of plaintiff's witnesses, favorable rulings, helpful admissions extracted on cross, defense verdicts).
+"wentPoorly" = moments, tactics, omissions, or rulings that HURT THE DEFENSE (e.g. damaging admissions by defense witnesses, sustained objections against the defense, missed cross-examination opportunities).
+The "fix" field in wentPoorly is direct advice to defense counsel on what should have been done differently or how to address it on appeal/retrial. Address it to the defense in second person ("You should have…", "On retrial, push harder on…").`,
     schema: `{
   "wentWell": [ { "category": "", "title": "", "detail": "", "cite": "" } ],
   "wentPoorly": [ { "category": "", "title": "", "detail": "", "cite": "", "fix": "" } ]
@@ -86,6 +104,19 @@ const SECTIONS: SectionSpec[] = [
     key: "witnesses",
     label: "Scoring witnesses… (4/5)",
     progress: 70,
+    instructions: `For each witness, evaluate their testimony from the DEFENSE'S perspective:
+- "credibility" = how credible they appeared to the jury (Strong / Mixed / Weak).
+- "bestMoment" = the moment in their testimony that was MOST HELPFUL TO THE DEFENSE (or least damaging).
+- "worstMoment" = the moment in their testimony that was MOST DAMAGING TO THE DEFENSE.
+- "strategicValue" = whether this witness helped or hurt the defense overall, and why.
+For the defense's own witnesses, "bestMoment" is their strongest testimony for our side. For the plaintiff's witnesses, "bestMoment" is where they were impeached, contradicted, or made admissions favorable to us.
+
+For each objection, evaluate from the DEFENSE'S perspective:
+- If defense made the objection: was it well-placed and was the ruling favorable to us?
+- If plaintiff made the objection: was their objection a strategic threat and did the court's ruling protect our position?
+- "significance" = whether this objection or ruling helped or hurt the defense's trial position.
+
+In the "role" field, identify which side called the witness using one of: "Defense witness", "Plaintiff witness", "Court witness". You may add a brief descriptor after a comma (e.g. "Defense witness, treating physician").`,
     schema: `{
   "witnesses": [ { "name": "", "role": "", "credibility": "", "bestMoment": "", "worstMoment": "", "strategicValue": "" } ],
   "objections": [ { "party": "", "grounds": "", "ruling": "", "significance": "" } ]
@@ -96,6 +127,7 @@ const SECTIONS: SectionSpec[] = [
     key: "recommendations",
     label: "Building recommendations… (5/5)",
     progress: 90,
+    instructions: `"recommendations" are direct strategic advice to DEFENSE COUNSEL only. Each recommendation should answer: "What should defense counsel do differently next time, on appeal, or in similar future cases?" Address the defense directly — use phrases like "On retrial, defense should…" or "For future similar cases, consider…". Do NOT include recommendations directed at the plaintiff. Do NOT recommend things the defense already did well.`,
     schema: `{
   "juryChargeIssues": [ { "dispute": "", "plaintiffArg": "", "defenseArg": "", "resolution": "", "impact": "" } ],
   "recommendations": [ "" ]
@@ -198,7 +230,7 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
         progress: section.progress,
         progress_message: section.label,
       });
-      const userMessage = `Analyze this litigation transcript summary and return ONLY this JSON structure with no other text:\n${section.schema}\n\nCase label: ${caseName}\n\nSummary:\n${summary}`;
+      const userMessage = `${FRAMING}\n\n${section.instructions ? section.instructions + "\n\n" : ""}Analyze this litigation transcript summary and return ONLY this JSON structure with no other text:\n${section.schema}\n\nCase label: ${caseName}\n\nSummary:\n${summary}`;
       try {
         const t = Date.now();
         const raw = await callClaude(apiKey, SYSTEM_PROMPT, userMessage, 3000);

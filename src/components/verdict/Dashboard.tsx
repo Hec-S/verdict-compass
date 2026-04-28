@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { Panel, Cite, CategoryTag } from "./Panel";
 import type { StoredCase, Credibility } from "@/lib/analysis-types";
+import { ROLE_LABEL, USER_ROLE, witnessSideLabel } from "@/lib/user-role";
 
 type ItemTone = "positive" | "negative" | "neutral";
 
@@ -124,6 +125,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
     { label: "Defendant", value: snap.defendant },
     { label: "Filed", value: snap.filed },
     { label: "Outcome", value: snap.outcome },
+    { label: "Our role", value: ROLE_LABEL[USER_ROLE] },
   ];
   const hasMeta = metaFields.some((f) => f.value);
 
@@ -170,7 +172,12 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
       </div>
 
       {/* What Went Well */}
-      <Panel title="What went well" count={r.wentWell?.length ?? 0} missing={missing.has("wentWell")}>
+      <Panel
+        title="What went well"
+        count={r.wentWell?.length ?? 0}
+        missing={missing.has("wentWell")}
+        emptyMessage="No defense wins identified."
+      >
         <ul>
           {r.wentWell?.map((c, i) => (
             <ListItem
@@ -190,6 +197,7 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
         title="What didn't go well"
         count={r.wentPoorly?.length ?? 0}
         missing={missing.has("wentPoorly")}
+        emptyMessage="No issues identified for the defense."
       >
         <ul>
           {r.wentPoorly?.map((c, i) => (
@@ -244,7 +252,12 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
               <p className="text-[11px] text-muted-foreground mb-0.5">
                 {w.role} · {w.credibility}
               </p>
-              <p className="text-[14px] font-medium text-foreground leading-snug">{w.name}</p>
+              <p className="text-[14px] font-medium text-foreground leading-snug">
+                {w.name}
+                <span className="ml-2 text-[11px] font-normal text-muted-foreground">
+                  {witnessSideLabel(w.role)}
+                </span>
+              </p>
               <div className="text-[13px] text-muted-foreground leading-[1.55] mt-1 space-y-1">
                 <p>
                   <span className="text-foreground">Best. </span>
@@ -321,9 +334,10 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
 
       {/* Recommendations */}
       <Panel
-        title="Strategic recommendations"
+        title="Defense recommendations"
         count={r.recommendations?.length ?? 0}
         missing={missing.has("recommendations")}
+        emptyMessage="No defense recommendations generated."
       >
         <ul>
           {r.recommendations?.map((rec, i) => (
