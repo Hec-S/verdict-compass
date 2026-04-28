@@ -32,10 +32,14 @@ export const Route = createRootRoute({
       { title: "VerdictIQ — Turn transcripts into strategy" },
       { name: "description", content: "AI-powered litigation transcript analysis. Upload trial transcripts and get a senior trial attorney's strategic breakdown in seconds." },
       { property: "og:title", content: "VerdictIQ — Turn transcripts into strategy" },
-      { property: "og:description", content: "AI-powered litigation transcript analysis for trial attorneys." },
+      { property: "og:description", content: "AI-powered litigation transcript analysis. Upload trial transcripts and get a senior trial attorney's strategic breakdown in seconds." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "VerdictIQ — Turn transcripts into strategy" },
+      { name: "twitter:description", content: "AI-powered litigation transcript analysis. Upload trial transcripts and get a senior trial attorney's strategic breakdown in seconds." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b43e5048-2b1f-4683-8a8e-aee47e48c66a/id-preview-6ed9e681--4e99eb7e-71b2-485e-8f0c-6f797ade31cc.lovable.app-1777410525026.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b43e5048-2b1f-4683-8a8e-aee47e48c66a/id-preview-6ed9e681--4e99eb7e-71b2-485e-8f0c-6f797ade31cc.lovable.app-1777410525026.png" },
     ],
     links: [
       {
