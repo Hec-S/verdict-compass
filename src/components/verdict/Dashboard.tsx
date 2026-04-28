@@ -4,6 +4,12 @@ import { ChevronRight } from "lucide-react";
 import { Panel, Cite, CategoryTag } from "./Panel";
 import type { StoredCase, Credibility } from "@/lib/analysis-types";
 import { ROLE_LABEL, USER_ROLE, witnessSideLabel } from "@/lib/user-role";
+import {
+  loadClientTrace,
+  jobIdForCase,
+  formatTraceText,
+  downloadTraceFile,
+} from "@/lib/debug-trace";
 
 type ItemTone = "positive" | "negative" | "neutral";
 
@@ -118,6 +124,23 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
   const snap = r.caseSnapshot ?? ({} as any);
   const missing = new Set(stored.missingSections ?? []);
 
+  const serverTrace = stored.serverTrace ?? [];
+  const jobId = jobIdForCase(stored.id);
+  const clientTrace = jobId ? (loadClientTrace(jobId) ?? []) : [];
+  const hasTrace = serverTrace.length > 0 || clientTrace.length > 0;
+
+  function handleDownloadTrace() {
+    const text = formatTraceText({
+      caseName: snap.caseName || stored.caseName,
+      caseId: stored.id,
+      jobId,
+      client: clientTrace,
+      server: serverTrace,
+    });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    downloadTraceFile(`debug-trace-${ts}.txt`, text);
+  }
+
   const metaFields: { label: string; value?: string }[] = [
     { label: "Court", value: snap.court },
     { label: "Posture", value: snap.posture },
@@ -161,6 +184,11 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
           </div>
           <div className="flex gap-2 print:hidden">
             <OutlineButton onClick={() => window.print()}>Download Report</OutlineButton>
+            {hasTrace && (
+              <OutlineButton onClick={handleDownloadTrace}>
+                Download Debug Trace
+              </OutlineButton>
+            )}
             <OutlineButton onClick={() => navigate({ to: "/" })}>New Case</OutlineButton>
           </div>
         </div>
