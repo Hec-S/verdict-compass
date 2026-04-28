@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { runSynthesis } from "./synthesize.process";
 
 const InputSchema = z.object({ matterId: z.string().uuid() });
+
+type WaitUntilContext = { waitUntil?: (promise: Promise<unknown>) => void };
 
 function getEnv(key: string): string | undefined {
   const g = globalThis as unknown as {
@@ -15,7 +18,7 @@ function getEnv(key: string): string | undefined {
 export const Route = createFileRoute("/api/synthesize/submit")({
   server: {
     handlers: {
-      POST: async ({ request }: { request: Request }) => {
+      POST: async ({ request, context }: { request: Request; context?: unknown }) => {
         let parsed: z.infer<typeof InputSchema>;
         try {
           parsed = InputSchema.parse(await request.json());
@@ -81,20 +84,24 @@ export const Route = createFileRoute("/api/synthesize/submit")({
           );
         }
 
-        // Fire-and-forget: kick off the process route.
-        const url = new URL(request.url);
-        const processUrl = `${url.origin}/api/synthesize/process`;
-        try {
-          // Don't await — same fire-and-forget pattern as analyze.submit.
-          void fetch(processUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ synthesisId: inserted.id }),
-          }).catch((err) => {
-            console.error("[synthesize.submit] background fetch error:", err);
-          });
-        } catch (err) {
-          console.error("[synthesize.submit] dispatch failed:", err);
+        const task = runSynthesis(inserted.id).catch(async (err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[synthesize.submit] background synthesis failed:", message);
+          await supabase
+            .from("matter_syntheses")
+            .update({
+              status: "error",
+              error: message,
+              progress_message: "Synthesis failed.",
+            })
+            .eq("id", inserted.id);
+        });
+
+        const ctx = context as WaitUntilContext | undefined;
+        if (typeof ctx?.waitUntil === "function") {
+          ctx.waitUntil(task);
+        } else {
+          void task;
         }
 
         return Response.json({ synthesisId: inserted.id });
