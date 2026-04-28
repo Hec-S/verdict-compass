@@ -14,7 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      analysis_jobs: {
+        Row: {
+          case_name: string
+          created_at: string
+          error: string | null
+          failed_sections: Json
+          id: string
+          progress: number
+          progress_message: string
+          result: Json | null
+          status: string
+          transcript_text: string | null
+        }
+        Insert: {
+          case_name?: string
+          created_at?: string
+          error?: string | null
+          failed_sections?: Json
+          id?: string
+          progress?: number
+          progress_message?: string
+          result?: Json | null
+          status?: string
+          transcript_text?: string | null
+        }
+        Update: {
+          case_name?: string
+          created_at?: string
+          error?: string | null
+          failed_sections?: Json
+          id?: string
+          progress?: number
+          progress_message?: string
+          result?: Json | null
+          status?: string
+          transcript_text?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
