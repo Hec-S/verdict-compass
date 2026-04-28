@@ -5,6 +5,37 @@ import { USER_ROLE } from "@/lib/user-role";
 
 const InputSchema = z.object({ jobId: z.string().uuid() });
 
+// ---------- DEBUG TRACE ----------
+// Append-only structured trace persisted to analysis_jobs.debug_trace and
+// later copied to cases.debug_trace. Purely additive — analysis logic does
+// not consume it. The case page exposes it via a "Download Debug Trace"
+// button.
+interface TraceEvent {
+  ts: string;
+  stage: string;
+  data: Record<string, unknown>;
+}
+function nowIso() {
+  return new Date().toISOString();
+}
+function makeTrace() {
+  const events: TraceEvent[] = [];
+  return {
+    events,
+    add(stage: string, data: Record<string, unknown>) {
+      const ev: TraceEvent = { ts: nowIso(), stage, data };
+      events.push(ev);
+      try {
+        console.log(
+          `===== STAGE: ${stage} =====\n` + JSON.stringify(data, null, 2),
+        );
+      } catch {
+        console.log(`===== STAGE: ${stage} ===== (unserializable)`);
+      }
+    },
+  };
+}
+
 function getEnv(key: string): string | undefined {
   const g = globalThis as unknown as {
     process?: { env?: Record<string, string | undefined> };
