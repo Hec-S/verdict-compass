@@ -189,6 +189,10 @@ export function MatterSynthesisView({
 
       {/* ExecSummary panel */}
       <section className="border border-border p-5 mb-6 print:p-0 print:border-0 print:mb-4">
+        {isFailed("strategicOverview") ? (
+          <Unavailable subCallKey="strategicOverview" />
+        ) : (
+          <>
         <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-2">
           Defense theory
         </div>
@@ -259,6 +263,8 @@ export function MatterSynthesisView({
             </ul>
           </div>
         </div>
+          </>
+        )}
       </section>
 
       {/* Witness Threat Ranking */}
@@ -267,6 +273,9 @@ export function MatterSynthesisView({
         count={synthesis.witnessThreatRanking.length}
         defaultOpen
       >
+        {isFailed("witnessThreats") ? (
+          <Unavailable subCallKey="witnessThreats" />
+        ) : (
         <div className="space-y-3">
           {synthesis.witnessThreatRanking.length === 0 && (
             <p className="text-[13px] text-muted-foreground italic">No witnesses ranked.</p>
@@ -321,10 +330,14 @@ export function MatterSynthesisView({
               </div>
             ))}
         </div>
+        )}
       </Section>
 
       {/* Contradiction Matrix */}
       <Section title="Contradiction matrix" count={synthesis.contradictionMatrix.length}>
+        {isFailed("contradictionsAdmissions") ? (
+          <Unavailable subCallKey="contradictionsAdmissions" />
+        ) : (
         <div className="space-y-4">
           {synthesis.contradictionMatrix.length === 0 && (
             <p className="text-[13px] text-muted-foreground italic">No contradictions identified.</p>
@@ -370,6 +383,7 @@ export function MatterSynthesisView({
             </div>
           ))}
         </div>
+        )}
       </Section>
 
       {/* Unified Admissions Inventory */}
@@ -377,6 +391,9 @@ export function MatterSynthesisView({
         title="Unified admissions inventory"
         count={synthesis.unifiedAdmissionsInventory.length}
       >
+        {isFailed("contradictionsAdmissions") ? (
+          <Unavailable subCallKey="contradictionsAdmissions" />
+        ) : (
         <div className="space-y-3">
           {synthesis.unifiedAdmissionsInventory.length === 0 && (
             <p className="text-[13px] text-muted-foreground italic">No admissions inventoried.</p>
@@ -402,10 +419,15 @@ export function MatterSynthesisView({
             </div>
           ))}
         </div>
+        )}
       </Section>
 
       {/* Causation Analysis */}
       <Section title="Causation analysis" defaultOpen>
+        {isFailed("causationMethodology") ? (
+          <Unavailable subCallKey="causationMethodology" />
+        ) : (
+        <>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2">
           <div>
             <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-1.5">
@@ -475,6 +497,8 @@ export function MatterSynthesisView({
             </p>
           </div>
         )}
+        </>
+        )}
       </Section>
 
       {/* Methodology Challenges */}
@@ -482,6 +506,9 @@ export function MatterSynthesisView({
         title="Methodology challenges"
         count={synthesis.methodologyChallenges.length}
       >
+        {isFailed("causationMethodology") ? (
+          <Unavailable subCallKey="causationMethodology" />
+        ) : (
         <div className="space-y-3">
           {synthesis.methodologyChallenges.length === 0 && (
             <p className="text-[13px] text-muted-foreground italic">None identified.</p>
@@ -502,10 +529,15 @@ export function MatterSynthesisView({
             </div>
           ))}
         </div>
+        )}
       </Section>
 
       {/* Bias Narrative */}
       <Section title="Bias narrative">
+        {isFailed("strategicOverview") ? (
+          <Unavailable subCallKey="strategicOverview" />
+        ) : (
+        <>
         {synthesis.biasNarrative.pipelineMap && (
           <div className="mb-4">
             <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-1.5">
@@ -560,10 +592,15 @@ export function MatterSynthesisView({
             </p>
           </div>
         )}
+        </>
+        )}
       </Section>
 
       {/* Motions in Limine */}
       <Section title="Motions in limine" count={synthesis.motionsInLimine.length}>
+        {isFailed("motionsDiscovery") ? (
+          <Unavailable subCallKey="motionsDiscovery" />
+        ) : (
         <div className="space-y-2">
           {synthesis.motionsInLimine.length === 0 && (
             <p className="text-[13px] text-muted-foreground italic">None recommended.</p>
@@ -585,10 +622,14 @@ export function MatterSynthesisView({
             </div>
           ))}
         </div>
+        )}
       </Section>
 
       {/* Discovery Gaps */}
       <Section title="Discovery gaps" count={synthesis.discoveryGaps.length}>
+        {isFailed("motionsDiscovery") ? (
+          <Unavailable subCallKey="motionsDiscovery" />
+        ) : (
         <div className="space-y-2">
           {synthesis.discoveryGaps.length === 0 && (
             <p className="text-[13px] text-muted-foreground italic">No gaps identified.</p>
@@ -616,10 +657,14 @@ export function MatterSynthesisView({
             </div>
           ))}
         </div>
+        )}
       </Section>
 
       {/* Trial Themes */}
       <Section title="Trial themes" count={synthesis.trialThemes.length}>
+        {isFailed("strategicOverview") ? (
+          <Unavailable subCallKey="strategicOverview" />
+        ) : (
         <div className="space-y-3">
           {synthesis.trialThemes.length === 0 && (
             <p className="text-[13px] text-muted-foreground italic">No themes identified.</p>
@@ -662,10 +707,14 @@ export function MatterSynthesisView({
             </div>
           ))}
         </div>
+        )}
       </Section>
 
       {/* What We Missed */}
       <Section title="What we missed" count={synthesis.whatWeMessedUp.length}>
+        {isFailed("retrospective") ? (
+          <Unavailable subCallKey="retrospective" />
+        ) : (
         <div className="space-y-2">
           {synthesis.whatWeMessedUp.length === 0 && (
             <p className="text-[13px] text-muted-foreground italic">Nothing flagged.</p>
@@ -703,10 +752,14 @@ export function MatterSynthesisView({
             </div>
           ))}
         </div>
+        )}
       </Section>
 
       {/* What To Do Next */}
       <Section title="What to do next" count={synthesis.whatToDoNext.length} defaultOpen>
+        {isFailed("retrospective") ? (
+          <Unavailable subCallKey="retrospective" />
+        ) : (
         <div className="space-y-2">
           {synthesis.whatToDoNext.length === 0 && (
             <p className="text-[13px] text-muted-foreground italic">No actions queued.</p>
@@ -730,6 +783,7 @@ export function MatterSynthesisView({
             </div>
           ))}
         </div>
+        )}
       </Section>
 
       <AlertDialog open={confirmRerun} onOpenChange={setConfirmRerun}>
