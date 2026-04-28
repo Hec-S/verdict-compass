@@ -71,4 +71,6 @@ export interface StoredCase {
   truncated: boolean;
   result: AnalysisResult;
   missingSections?: string[];
+  /** Per-stage server trace (additive — present when the worker recorded it). */
+  serverTrace?: Array<{ ts: string; stage: string; data: Record<string, unknown> }>;
 }
