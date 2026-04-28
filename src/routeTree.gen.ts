@@ -19,6 +19,7 @@ import { Route as ApiSynthesizeSubmitRouteImport } from './routes/api/synthesize
 import { Route as ApiSynthesizeProcessRouteImport } from './routes/api/synthesize.process'
 import { Route as ApiAnalyzeSubmitRouteImport } from './routes/api/analyze.submit'
 import { Route as ApiAnalyzeProcessRouteImport } from './routes/api/analyze.process'
+import { Route as MatterMatterIdSynthesisSynthesisIdRouteImport } from './routes/matter.$matterId.synthesis.$synthesisId'
 
 const UnfiledRoute = UnfiledRouteImport.update({
   id: '/unfiled',
@@ -70,6 +71,12 @@ const ApiAnalyzeProcessRoute = ApiAnalyzeProcessRouteImport.update({
   path: '/api/analyze/process',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MatterMatterIdSynthesisSynthesisIdRoute =
+  MatterMatterIdSynthesisSynthesisIdRouteImport.update({
+    id: '/matter/$matterId/synthesis/$synthesisId',
+    path: '/matter/$matterId/synthesis/$synthesisId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
   '/api/synthesize/process': typeof ApiSynthesizeProcessRoute
   '/api/synthesize/submit': typeof ApiSynthesizeSubmitRoute
+  '/matter/$matterId/synthesis/$synthesisId': typeof MatterMatterIdSynthesisSynthesisIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -94,6 +102,7 @@ export interface FileRoutesByTo {
   '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
   '/api/synthesize/process': typeof ApiSynthesizeProcessRoute
   '/api/synthesize/submit': typeof ApiSynthesizeSubmitRoute
+  '/matter/$matterId/synthesis/$synthesisId': typeof MatterMatterIdSynthesisSynthesisIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,6 +116,7 @@ export interface FileRoutesById {
   '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
   '/api/synthesize/process': typeof ApiSynthesizeProcessRoute
   '/api/synthesize/submit': typeof ApiSynthesizeSubmitRoute
+  '/matter/$matterId/synthesis/$synthesisId': typeof MatterMatterIdSynthesisSynthesisIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/api/analyze/submit'
     | '/api/synthesize/process'
     | '/api/synthesize/submit'
+    | '/matter/$matterId/synthesis/$synthesisId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -133,6 +144,7 @@ export interface FileRouteTypes {
     | '/api/analyze/submit'
     | '/api/synthesize/process'
     | '/api/synthesize/submit'
+    | '/matter/$matterId/synthesis/$synthesisId'
   id:
     | '__root__'
     | '/'
@@ -145,6 +157,7 @@ export interface FileRouteTypes {
     | '/api/analyze/submit'
     | '/api/synthesize/process'
     | '/api/synthesize/submit'
+    | '/matter/$matterId/synthesis/$synthesisId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -158,6 +171,7 @@ export interface RootRouteChildren {
   ApiAnalyzeSubmitRoute: typeof ApiAnalyzeSubmitRoute
   ApiSynthesizeProcessRoute: typeof ApiSynthesizeProcessRoute
   ApiSynthesizeSubmitRoute: typeof ApiSynthesizeSubmitRoute
+  MatterMatterIdSynthesisSynthesisIdRoute: typeof MatterMatterIdSynthesisSynthesisIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -232,6 +246,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAnalyzeProcessRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/matter/$matterId/synthesis/$synthesisId': {
+      id: '/matter/$matterId/synthesis/$synthesisId'
+      path: '/matter/$matterId/synthesis/$synthesisId'
+      fullPath: '/matter/$matterId/synthesis/$synthesisId'
+      preLoaderRoute: typeof MatterMatterIdSynthesisSynthesisIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -246,7 +267,18 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAnalyzeSubmitRoute: ApiAnalyzeSubmitRoute,
   ApiSynthesizeProcessRoute: ApiSynthesizeProcessRoute,
   ApiSynthesizeSubmitRoute: ApiSynthesizeSubmitRoute,
+  MatterMatterIdSynthesisSynthesisIdRoute:
+    MatterMatterIdSynthesisSynthesisIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
