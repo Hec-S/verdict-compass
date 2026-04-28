@@ -22,13 +22,6 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const STATUS_MESSAGES = [
-  "Reviewing the record…",
-  "Cross-referencing testimony…",
-  "Cataloging objections and rulings…",
-  "Drafting strategic findings…",
-];
-
 interface PreparedPayload {
   caseName: string;
   transcript: string;
@@ -40,7 +33,7 @@ function Index() {
   const [files, setFiles] = useState<File[]>([]);
   const [caseName, setCaseName] = useState("");
   const [status, setStatus] = useState<string | null>(null);
-  const [streamedChars, setStreamedChars] = useState(0);
+  const [progress, setProgress] = useState<{ step: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const [parseFailed, setParseFailed] = useState(false);
@@ -67,22 +60,22 @@ function Index() {
     setTimedOut(false);
     setParseFailed(false);
     setBusy(true);
-    setStreamedChars(0);
-
-    let i = 0;
-    setStatus(STATUS_MESSAGES[0]);
-    const ticker = window.setInterval(() => {
-      i = (i + 1) % STATUS_MESSAGES.length;
-      setStatus(STATUS_MESSAGES[i]);
-    }, 3500);
+    setProgress(null);
+    setStatus("Preparing analysis…");
 
     try {
-      const result = await streamAnalyze(
+      const { result, failedSections } = await streamAnalyze(
         payload.caseName,
         payload.transcript,
-        (chars) => setStreamedChars(chars),
+        (p) => {
+          setProgress({ step: p.step, total: p.total });
+          setStatus(`${p.label} (${p.step}/${p.total})`);
+        },
       );
+      setStatus("Analysis complete.");
       const { result: normalized, missing } = normalizeResult(result);
+      // Merge server-reported failed sections with shape-validation misses
+      const allMissing = Array.from(new Set([...(missing ?? []), ...failedSections]));
       const id = crypto.randomUUID();
       saveCase({
         id,
@@ -90,7 +83,7 @@ function Index() {
         createdAt: Date.now(),
         truncated: payload.truncated,
         result: normalized,
-        missingSections: missing,
+        missingSections: allMissing,
       });
       setParseFailCount(0);
       navigate({ to: "/report/$id", params: { id } });
@@ -112,7 +105,6 @@ function Index() {
       }
       setStatus(null);
     } finally {
-      window.clearInterval(ticker);
       setBusy(false);
     }
   }
@@ -224,9 +216,9 @@ function Index() {
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
                   {status ?? "Working…"}
-                  {streamedChars > 0 && (
+                  {progress && (
                     <span className="font-mono text-xs opacity-70 ml-1">
-                      ({streamedChars.toLocaleString()} chars)
+                      ({progress.step}/{progress.total})
                     </span>
                   )}
                 </>
