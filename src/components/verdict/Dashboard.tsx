@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { ChevronRight } from "lucide-react";
 import { Panel, Cite, CategoryTag } from "./Panel";
 import type { StoredCase, Credibility } from "@/lib/analysis-types";
 
@@ -17,6 +19,7 @@ function ListItem({
   detail,
   cite,
   extra,
+  emphasizeDetail = false,
 }: {
   tone?: ItemTone;
   category?: string;
@@ -24,6 +27,7 @@ function ListItem({
   detail?: string;
   cite?: string;
   extra?: React.ReactNode;
+  emphasizeDetail?: boolean;
 }) {
   return (
     <li
@@ -37,10 +41,43 @@ function ListItem({
         {cite && <Cite>{cite}</Cite>}
       </p>
       {detail && (
-        <p className="text-[13px] text-muted-foreground leading-[1.55] mt-1">{detail}</p>
+        <p
+          className={`text-[13px] leading-[1.55] mt-1 font-normal ${emphasizeDetail ? "text-foreground" : "text-muted-foreground"}`}
+        >
+          {detail}
+        </p>
       )}
       {extra}
     </li>
+  );
+}
+
+function FixDisclosure({ fix }: { fix: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="group flex items-center gap-1 py-1.5 text-[12px] font-medium text-foreground cursor-pointer"
+      >
+        <span>Fix</span>
+        <ChevronRight
+          size={8}
+          className={`text-muted-foreground group-hover:text-foreground transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+        />
+      </button>
+      <div
+        className={`grid transition-[grid-template-rows] duration-150 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+      >
+        <div className="overflow-hidden">
+          <p className="text-[13px] font-normal text-foreground leading-[1.55] mt-2 pl-1">
+            {fix}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -163,13 +200,9 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
               title={c.title}
               detail={c.detail}
               cite={c.cite}
+              emphasizeDetail
               extra={
-                c.fix ? (
-                  <p className="text-[13px] text-muted-foreground leading-[1.55] mt-2">
-                    <span className="text-foreground">Fix. </span>
-                    {c.fix}
-                  </p>
-                ) : null
+                c.fix ? <FixDisclosure fix={c.fix} /> : null
               }
             />
           ))}
