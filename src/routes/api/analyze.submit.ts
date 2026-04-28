@@ -29,7 +29,6 @@ function cleanTranscript(raw: string): string {
 }
 
 export const Route = createFileRoute("/api/analyze/submit")({
-  // @ts-expect-error - TanStack server route typing
   server: {
     handlers: {
       POST: async ({ request }: { request: Request }) => {
