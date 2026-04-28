@@ -135,6 +135,7 @@ export type Database = {
           case_ids: string[]
           created_at: string
           error: string | null
+          failed_sections: Json
           id: string
           matter_id: string
           progress: number
@@ -146,6 +147,7 @@ export type Database = {
           case_ids?: string[]
           created_at?: string
           error?: string | null
+          failed_sections?: Json
           id?: string
           matter_id: string
           progress?: number
@@ -157,6 +159,7 @@ export type Database = {
           case_ids?: string[]
           created_at?: string
           error?: string | null
+          failed_sections?: Json
           id?: string
           matter_id?: string
           progress?: number
