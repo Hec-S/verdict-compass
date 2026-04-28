@@ -4,10 +4,25 @@ import { toast } from "sonner";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { MatterSynthesisView } from "@/components/verdict/MatterSynthesisView";
 import { Progress } from "@/components/ui/progress";
-import { getSynthesisFromDb, submitSynthesis } from "@/lib/synthesis-db";
+import {
+  deleteSynthesisFromDb,
+  getSynthesisFromDb,
+  markSynthesisProcessorNeverStarted,
+  submitSynthesis,
+} from "@/lib/synthesis-db";
 import { getMatterFromDb } from "@/lib/matters-db";
 import type { MatterSynthesisRow } from "@/lib/analysis-types";
 import type { CaseListRow } from "@/lib/cases-db";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute(
   "/matter/$matterId/synthesis/$synthesisId",
@@ -18,6 +33,8 @@ export const Route = createFileRoute(
   component: MatterSynthesisPage,
 });
 
+const SYNTHESIS_START_TIMEOUT_MS = 60 * 1000;
+
 function MatterSynthesisPage() {
   const { matterId, synthesisId } = Route.useParams();
   const navigate = useNavigate();
@@ -26,6 +43,7 @@ function MatterSynthesisPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [rerunning, setRerunning] = useState(false);
+  const [confirmRetry, setConfirmRetry] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +79,21 @@ function MatterSynthesisPage() {
       try {
         const row = await getSynthesisFromDb(synthesisId);
         if (cancelled || !row) return;
+        if (
+          row.status === "pending" &&
+          row.progress === 0 &&
+          Date.now() - row.createdAt > SYNTHESIS_START_TIMEOUT_MS
+        ) {
+          await markSynthesisProcessorNeverStarted(row.id);
+          setSynth({
+            ...row,
+            status: "error",
+            error: "Synthesis processor never started. Click Re-run to try again.",
+            progressMessage: "Synthesis failed.",
+          });
+          clearInterval(interval);
+          return;
+        }
         setSynth(row);
         if (row.status === "complete" || row.status === "error") {
           clearInterval(interval);
