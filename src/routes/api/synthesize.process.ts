@@ -549,6 +549,9 @@ interface SubCall {
   label: string;
   progress: number;
   message: string;
+  /** Top-level CaseSynthesis keys this sub-call populates. Used during
+   *  partial reruns to overlay only the sections the sub-call owns. */
+  resultKeys: Array<keyof CaseSynthesis>;
   fn: (
     apiKey: string,
     matter: MatterRow,
@@ -557,12 +560,12 @@ interface SubCall {
 }
 
 const SUB_CALLS: SubCall[] = [
-  { key: "strategicOverview", label: "Strategic overview", progress: 87, message: "Synthesizing strategic overview", fn: synthesizeStrategicOverview },
-  { key: "witnessThreats", label: "Witness threats", progress: 89, message: "Ranking witness threats", fn: synthesizeWitnessThreats },
-  { key: "contradictionsAdmissions", label: "Contradictions and admissions", progress: 92, message: "Mapping contradictions and admissions", fn: synthesizeContradictionsAndAdmissions },
-  { key: "causationMethodology", label: "Causation and methodology", progress: 94, message: "Building causation and methodology challenges", fn: synthesizeCausationAndMethodology },
-  { key: "motionsDiscovery", label: "Motions and discovery", progress: 96, message: "Drafting motions and discovery roadmap", fn: synthesizeMotionsAndDiscovery },
-  { key: "retrospective", label: "Retrospective", progress: 98, message: "Identifying missed opportunities and next steps", fn: synthesizeRetrospective },
+  { key: "strategicOverview", label: "Strategic Overview", progress: 87, message: "Synthesizing strategic overview", resultKeys: ["execSummary", "biasNarrative", "trialThemes"], fn: synthesizeStrategicOverview },
+  { key: "witnessThreats", label: "Witness Threat Ranking", progress: 89, message: "Ranking witness threats", resultKeys: ["witnessThreatRanking"], fn: synthesizeWitnessThreats },
+  { key: "contradictionsAdmissions", label: "Contradictions & Admissions", progress: 92, message: "Mapping contradictions and admissions", resultKeys: ["contradictionMatrix", "unifiedAdmissionsInventory"], fn: synthesizeContradictionsAndAdmissions },
+  { key: "causationMethodology", label: "Causation & Methodology", progress: 94, message: "Building causation and methodology challenges", resultKeys: ["causationAnalysis", "methodologyChallenges"], fn: synthesizeCausationAndMethodology },
+  { key: "motionsDiscovery", label: "Motions & Discovery", progress: 96, message: "Drafting motions and discovery roadmap", resultKeys: ["motionsInLimine", "discoveryGaps"], fn: synthesizeMotionsAndDiscovery },
+  { key: "retrospective", label: "Retrospective", progress: 98, message: "Identifying missed opportunities and next steps", resultKeys: ["whatWeMessedUp", "whatToDoNext"], fn: synthesizeRetrospective },
 ];
 
 export async function synthesizeMatter(
