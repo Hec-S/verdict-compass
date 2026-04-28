@@ -27,11 +27,22 @@ export class MalformedJsonError extends Error {
   }
 }
 
+export interface ProgressEvent {
+  step: number;
+  total: number;
+  label: string;
+}
+
+export interface AnalyzeResult {
+  result: Record<string, unknown>;
+  failedSections: string[];
+}
+
 export async function streamAnalyze(
   caseName: string,
   transcript: string,
-  onChunk?: (chars: number) => void,
-): Promise<unknown> {
+  onProgress?: (p: ProgressEvent) => void,
+): Promise<AnalyzeResult> {
   let res: Response;
   try {
     res = await fetch("/api/analyze", {
@@ -53,23 +64,59 @@ export async function streamAnalyze(
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let assembled = "";
+  let buffer = "";
+  const failedSections: string[] = [];
+  let finalResult: Record<string, unknown> | null = null;
+  let serverError: string | null = null;
+
+  const handleLine = (line: string) => {
+    if (!line.trim()) return;
+    let evt: Record<string, unknown>;
+    try {
+      evt = JSON.parse(line);
+    } catch {
+      console.warn("Could not parse NDJSON line:", line);
+      return;
+    }
+    switch (evt.type) {
+      case "progress":
+        onProgress?.({
+          step: evt.step as number,
+          total: evt.total as number,
+          label: evt.label as string,
+        });
+        break;
+      case "section_failed":
+        failedSections.push(evt.key as string);
+        break;
+      case "done":
+        finalResult = evt.result as Record<string, unknown>;
+        if (Array.isArray(evt.failedSections)) {
+          for (const k of evt.failedSections) {
+            if (!failedSections.includes(k as string)) failedSections.push(k as string);
+          }
+        }
+        break;
+      case "error":
+        serverError = (evt.message as string) || "Server error";
+        break;
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    const chunk = decoder.decode(value, { stream: true });
-    assembled += chunk;
-    onChunk?.(assembled.length);
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      handleLine(line);
+    }
   }
+  if (buffer.trim()) handleLine(buffer);
 
-  if (!assembled.trim()) throw new TimeoutError();
-
-  try {
-    return extractJSON(assembled);
-  } catch (e) {
-    console.error("Raw Claude response (failed to parse):", assembled);
-    console.error("Parse error:", e);
-    throw new MalformedJsonError(assembled);
-  }
+  if (serverError) throw new Error(serverError);
+  if (!finalResult) throw new TimeoutError();
+  return { result: finalResult, failedSections };
 }
