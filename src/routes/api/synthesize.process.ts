@@ -7,9 +7,13 @@ import type {
   CaseSynthesis,
   AnalysisResult,
   CaseSnapshot,
+  FailedSection,
 } from "@/lib/analysis-types";
 
-const InputSchema = z.object({ synthesisId: z.string().uuid() });
+const InputSchema = z.object({
+  synthesisId: z.string().uuid(),
+  retrySections: z.array(z.string()).optional(),
+});
 
 function getEnv(key: string): string | undefined {
   const g = globalThis as unknown as {
@@ -545,6 +549,9 @@ interface SubCall {
   label: string;
   progress: number;
   message: string;
+  /** Top-level CaseSynthesis keys this sub-call populates. Used during
+   *  partial reruns to overlay only the sections the sub-call owns. */
+  resultKeys: Array<keyof CaseSynthesis>;
   fn: (
     apiKey: string,
     matter: MatterRow,
@@ -553,12 +560,12 @@ interface SubCall {
 }
 
 const SUB_CALLS: SubCall[] = [
-  { key: "strategicOverview", label: "Strategic overview", progress: 87, message: "Synthesizing strategic overview", fn: synthesizeStrategicOverview },
-  { key: "witnessThreats", label: "Witness threats", progress: 89, message: "Ranking witness threats", fn: synthesizeWitnessThreats },
-  { key: "contradictionsAdmissions", label: "Contradictions and admissions", progress: 92, message: "Mapping contradictions and admissions", fn: synthesizeContradictionsAndAdmissions },
-  { key: "causationMethodology", label: "Causation and methodology", progress: 94, message: "Building causation and methodology challenges", fn: synthesizeCausationAndMethodology },
-  { key: "motionsDiscovery", label: "Motions and discovery", progress: 96, message: "Drafting motions and discovery roadmap", fn: synthesizeMotionsAndDiscovery },
-  { key: "retrospective", label: "Retrospective", progress: 98, message: "Identifying missed opportunities and next steps", fn: synthesizeRetrospective },
+  { key: "strategicOverview", label: "Strategic Overview", progress: 87, message: "Synthesizing strategic overview", resultKeys: ["execSummary", "biasNarrative", "trialThemes"], fn: synthesizeStrategicOverview },
+  { key: "witnessThreats", label: "Witness Threat Ranking", progress: 89, message: "Ranking witness threats", resultKeys: ["witnessThreatRanking"], fn: synthesizeWitnessThreats },
+  { key: "contradictionsAdmissions", label: "Contradictions & Admissions", progress: 92, message: "Mapping contradictions and admissions", resultKeys: ["contradictionMatrix", "unifiedAdmissionsInventory"], fn: synthesizeContradictionsAndAdmissions },
+  { key: "causationMethodology", label: "Causation & Methodology", progress: 94, message: "Building causation and methodology challenges", resultKeys: ["causationAnalysis", "methodologyChallenges"], fn: synthesizeCausationAndMethodology },
+  { key: "motionsDiscovery", label: "Motions & Discovery", progress: 96, message: "Drafting motions and discovery roadmap", resultKeys: ["motionsInLimine", "discoveryGaps"], fn: synthesizeMotionsAndDiscovery },
+  { key: "retrospective", label: "Retrospective", progress: 98, message: "Identifying missed opportunities and next steps", resultKeys: ["whatWeMessedUp", "whatToDoNext"], fn: synthesizeRetrospective },
 ];
 
 export async function synthesizeMatter(
@@ -566,12 +573,25 @@ export async function synthesizeMatter(
   matter: MatterRow,
   cards: DepositionCard[],
   onProgress?: (p: { progress: number; message: string }) => Promise<void>,
-): Promise<{ result: CaseSynthesis; failedSections: string[]; successCount: number }> {
+  onlyKeys?: string[],
+): Promise<{
+  result: CaseSynthesis;
+  failedSections: FailedSection[];
+  successCount: number;
+  attemptedKeys: string[];
+  succeededKeys: string[];
+}> {
   const merged: Record<string, unknown> = {};
-  const failedSections: string[] = [];
+  const failedSections: FailedSection[] = [];
   let successCount = 0;
+  const attemptedKeys: string[] = [];
+  const succeededKeys: string[] = [];
+  const subset = onlyKeys && onlyKeys.length > 0
+    ? SUB_CALLS.filter((s) => onlyKeys.includes(s.key))
+    : SUB_CALLS;
 
-  for (const sub of SUB_CALLS) {
+  for (const sub of subset) {
+    attemptedKeys.push(sub.key);
     if (onProgress) {
       await onProgress({ progress: sub.progress, message: sub.message });
     }
@@ -580,19 +600,27 @@ export async function synthesizeMatter(
       if (part && Object.keys(part).length > 0) {
         Object.assign(merged, part);
         successCount += 1;
+        succeededKeys.push(sub.key);
       } else {
-        failedSections.push(sub.label);
+        failedSections.push({
+          section: sub.key,
+          error: "Sub-call returned an empty response (likely JSON parse failure).",
+        });
       }
     } catch (err) {
-      console.error(
-        `[synthesize.process] sub:${sub.key} failed:`,
-        err instanceof Error ? err.message : String(err),
-      );
-      failedSections.push(sub.label);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[synthesize.process] sub:${sub.key} failed:`, message);
+      failedSections.push({ section: sub.key, error: message });
     }
   }
 
-  return { result: mergeSynthesis(matter, merged), failedSections, successCount };
+  return {
+    result: mergeSynthesis(matter, merged),
+    failedSections,
+    successCount,
+    attemptedKeys,
+    succeededKeys,
+  };
 }
 
 async function updateSynthesis(
@@ -739,6 +767,171 @@ export async function runSynthesis(synthesisId: string) {
         status: "error",
         error: message,
         progress_message: "Synthesis failed.",
+      });
+    }
+  }
+}
+
+/**
+ * Re-runs only the specified sub-calls on an existing synthesis row, merging
+ * the new results into the existing CaseSynthesis. Successfully completed
+ * sub-calls are left untouched.
+ */
+export async function runSynthesisRetrySections(
+  synthesisId: string,
+  sectionKeys: string[],
+) {
+  console.log(
+    `[synthesize.process] retry ${synthesisId} sections=${sectionKeys.join(",")}`,
+  );
+  let supabase: SupabaseClient | null = null;
+  try {
+    supabase = createSynthesisClient();
+    const apiKey = getEnv("ANTHROPIC_API_KEY");
+    if (!apiKey) throw new Error("Anthropic API key not configured");
+
+    const validKeys = sectionKeys.filter((k) =>
+      SUB_CALLS.some((s) => s.key === k),
+    );
+    if (validKeys.length === 0) {
+      throw new Error("No valid section keys to retry.");
+    }
+
+    const { data: row, error: rErr } = await supabase
+      .from("matter_syntheses")
+      .select(
+        "id, matter_id, status, case_ids, result, failed_sections",
+      )
+      .eq("id", synthesisId)
+      .single();
+    if (rErr || !row) throw new Error(rErr?.message ?? "Synthesis not found");
+
+    await updateSynthesis(supabase, synthesisId, {
+      status: "processing",
+      progress: 5,
+      progress_message: `Re-running ${validKeys.length} section${validKeys.length === 1 ? "" : "s"}...`,
+      error: null,
+    });
+
+    const { data: matter, error: mErr } = await supabase
+      .from("matters")
+      .select("id, name, description")
+      .eq("id", row.matter_id)
+      .single();
+    if (mErr || !matter) throw new Error(mErr?.message ?? "Matter not found");
+
+    const { data: cases, error: cErr } = await supabase
+      .from("cases")
+      .select("id, case_name, result, case_snapshot, deposition_card")
+      .in("id", row.case_ids as string[]);
+    if (cErr) throw new Error(cErr.message);
+    const caseRows = (cases ?? []) as CaseRow[];
+
+    const cards: DepositionCard[] = [];
+    for (const c of caseRows) {
+      if (c.deposition_card) {
+        cards.push(c.deposition_card);
+      } else {
+        // Fallback: extract on the fly. (Should rarely happen on retry.)
+        const card = await extractDepositionCard(apiKey, c);
+        await supabase
+          .from("cases")
+          .update({ deposition_card: card })
+          .eq("id", c.id);
+        cards.push(card);
+      }
+    }
+
+    const {
+      result: partialResult,
+      failedSections: newFailures,
+      succeededKeys,
+      attemptedKeys,
+    } = await synthesizeMatter(
+      apiKey,
+      matter as MatterRow,
+      cards,
+      async ({ progress, message }) => {
+        await updateSynthesis(supabase!, synthesisId, {
+          progress,
+          progress_message: message,
+        });
+      },
+      validKeys,
+    );
+
+    // Merge: start from existing result, overlay only the resultKeys for
+    // sub-calls that succeeded this time. Anything that failed again or was
+    // not attempted keeps the prior value.
+    const existing = (row.result as CaseSynthesis | null) ?? null;
+    const merged: CaseSynthesis = existing
+      ? { ...existing }
+      : partialResult; // no prior result — use what we just produced
+    if (existing) {
+      for (const key of succeededKeys) {
+        const sub = SUB_CALLS.find((s) => s.key === key);
+        if (!sub) continue;
+        for (const rk of sub.resultKeys) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (merged as any)[rk] = (partialResult as any)[rk];
+        }
+      }
+    }
+
+    // Compute updated failed_sections: drop any prior failures whose section
+    // we just retried successfully; add new failures from this run.
+    const priorFailures = Array.isArray(row.failed_sections)
+      ? (row.failed_sections as unknown[])
+      : [];
+    const priorNormalized: FailedSection[] = priorFailures
+      .map((entry) => {
+        if (typeof entry === "string") {
+          return { section: entry, error: "Unknown error (legacy run)." };
+        }
+        if (entry && typeof entry === "object") {
+          const e = entry as { section?: unknown; error?: unknown };
+          return {
+            section: typeof e.section === "string" ? e.section : "",
+            error: typeof e.error === "string" ? e.error : "Unknown error.",
+          };
+        }
+        return { section: "", error: "" };
+      })
+      .filter((f) => f.section);
+    const remainingPrior = priorNormalized.filter(
+      (f) => !attemptedKeys.includes(f.section) && !succeededKeys.includes(f.section),
+    );
+    const updatedFailures: FailedSection[] = [...remainingPrior, ...newFailures];
+
+    let finalStatus: "complete" | "complete_with_errors";
+    if (updatedFailures.length === 0) {
+      finalStatus = "complete";
+    } else {
+      finalStatus = "complete_with_errors";
+    }
+
+    await updateSynthesis(supabase, synthesisId, {
+      status: finalStatus,
+      progress: 100,
+      progress_message:
+        finalStatus === "complete"
+          ? "Synthesis complete."
+          : `Synthesis complete with errors (${updatedFailures.length} section${updatedFailures.length === 1 ? "" : "s"} still failing).`,
+      result: merged,
+      failed_sections: updatedFailures,
+      error: null,
+    });
+    console.log(
+      `[synthesize.process] retry ${synthesisId} ${finalStatus}: ${succeededKeys.length}/${attemptedKeys.length} succeeded`,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[synthesize.process] retry ${synthesisId} fatal:`, message);
+    if (supabase) {
+      await updateSynthesis(supabase, synthesisId, {
+        status: "error",
+        error: message,
+        progress_message: "Retry failed.",
       });
     }
   }

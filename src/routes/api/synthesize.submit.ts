@@ -1,9 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { runSynthesis } from "./synthesize.process";
+import { runSynthesis, runSynthesisRetrySections } from "./synthesize.process";
 
-const InputSchema = z.object({ matterId: z.string().uuid() });
+const InputSchema = z.union([
+  z.object({ matterId: z.string().uuid() }),
+  z.object({
+    synthesisId: z.string().uuid(),
+    retrySections: z.array(z.string()).min(1),
+  }),
+]);
 
 type WaitUntilContext = { waitUntil?: (promise: Promise<unknown>) => void };
 
@@ -36,6 +42,29 @@ export const Route = createFileRoute("/api/synthesize/submit")({
           return Response.json({ error: "Backend not configured" }, { status: 500 });
         }
         const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // ---------- Retry-failed-sections branch ----------
+        if ("synthesisId" in parsed) {
+          const task = runSynthesisRetrySections(
+            parsed.synthesisId,
+            parsed.retrySections,
+          ).catch(async (err) => {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error("[synthesize.submit] retry failed:", message);
+            await supabase
+              .from("matter_syntheses")
+              .update({
+                status: "error",
+                error: message,
+                progress_message: "Retry failed.",
+              })
+              .eq("id", parsed.synthesisId);
+          });
+          const ctx = context as WaitUntilContext | undefined;
+          if (typeof ctx?.waitUntil === "function") ctx.waitUntil(task);
+          else void task;
+          return Response.json({ synthesisId: parsed.synthesisId });
+        }
 
         // Validate matter and ensure at least 2 cases
         const { data: matter, error: mErr } = await supabase

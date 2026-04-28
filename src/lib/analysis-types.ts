@@ -212,5 +212,77 @@ export interface MatterSynthesisRow {
   progress: number;
   progressMessage: string | null;
   error: string | null;
-  failedSections: string[];
+  failedSections: FailedSection[];
+}
+
+export interface FailedSection {
+  /** Internal sub-call key (e.g. "strategicOverview"). May fall back to a label
+   *  for legacy rows produced before keys were stored. */
+  section: string;
+  /** Human-readable error message captured at failure time. */
+  error: string;
+}
+
+/** Internal keys for the six Stage B sub-calls. Used as the canonical
+ *  identifier for re-running individual failed sections. */
+export const SYNTHESIS_SUB_CALL_KEYS = [
+  "strategicOverview",
+  "witnessThreats",
+  "contradictionsAdmissions",
+  "causationMethodology",
+  "motionsDiscovery",
+  "retrospective",
+] as const;
+export type SynthesisSubCallKey = (typeof SYNTHESIS_SUB_CALL_KEYS)[number];
+
+/** Maps each sub-call to a human-readable label and to the top-level keys
+ *  in CaseSynthesis that it produces. Used for friendly error rendering and
+ *  for hiding/showing report sections when their underlying sub-call failed. */
+export const SYNTHESIS_SUB_CALLS: Record<
+  SynthesisSubCallKey,
+  { label: string; resultKeys: Array<keyof CaseSynthesis> }
+> = {
+  strategicOverview: {
+    label: "Strategic Overview",
+    resultKeys: ["execSummary", "biasNarrative", "trialThemes"],
+  },
+  witnessThreats: {
+    label: "Witness Threat Ranking",
+    resultKeys: ["witnessThreatRanking"],
+  },
+  contradictionsAdmissions: {
+    label: "Contradictions & Admissions",
+    resultKeys: ["contradictionMatrix", "unifiedAdmissionsInventory"],
+  },
+  causationMethodology: {
+    label: "Causation & Methodology",
+    resultKeys: ["causationAnalysis", "methodologyChallenges"],
+  },
+  motionsDiscovery: {
+    label: "Motions & Discovery",
+    resultKeys: ["motionsInLimine", "discoveryGaps"],
+  },
+  retrospective: {
+    label: "Retrospective",
+    resultKeys: ["whatWeMessedUp", "whatToDoNext"],
+  },
+};
+
+/** Reverse lookup so that legacy rows (which stored labels like
+ *  "Contradictions and admissions") can still be mapped back to a section key. */
+export function legacyLabelToSubCallKey(
+  label: string,
+): SynthesisSubCallKey | null {
+  const norm = label.trim().toLowerCase();
+  for (const key of SYNTHESIS_SUB_CALL_KEYS) {
+    if (SYNTHESIS_SUB_CALLS[key].label.toLowerCase() === norm) return key;
+    // Older runs used "Contradictions and admissions" / "Causation and methodology" etc.
+    if (
+      SYNTHESIS_SUB_CALLS[key].label
+        .toLowerCase()
+        .replace(/&/g, "and") === norm
+    )
+      return key;
+  }
+  return null;
 }

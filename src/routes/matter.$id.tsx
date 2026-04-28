@@ -1,9 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { CaseRowList } from "@/components/verdict/CaseRow";
+import { MatterSynthesisView } from "@/components/verdict/MatterSynthesisView";
 import {
   getMatterFromDb,
   updateMatterInDb,
@@ -22,8 +23,10 @@ import {
   getLatestSynthesisForMatter,
   markSynthesisProcessorNeverStarted,
   deleteSynthesisFromDb,
+  retryFailedSections,
 } from "@/lib/synthesis-db";
 import type { MatterSynthesisRow } from "@/lib/analysis-types";
+import { SYNTHESIS_SUB_CALLS } from "@/lib/analysis-types";
 import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
@@ -273,11 +276,9 @@ function MatterDetailPage() {
         setLatestSynthesis(row);
         setSynthProgress(row.progress);
         if (row.progressMessage) setSynthMessage(row.progressMessage);
-        if (row.status === "complete") {
-          navigate({
-            to: "/matter/$matterId/synthesis/$synthesisId",
-            params: { matterId: matter.id, synthesisId },
-          });
+        if (row.status === "complete" || row.status === "complete_with_errors") {
+          // Synthesis is rendered inline below — no navigation.
+          setSynthRunning(false);
           return;
         }
         if (row.status === "error") {
@@ -303,6 +304,24 @@ function MatterDetailPage() {
       await runSynthesis();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to retry synthesis.");
+    } finally {
+      setRetryingSynthesis(false);
+    }
+  }
+
+  async function rerunFailedSubCalls() {
+    if (!latestSynthesis) return;
+    const keys = latestSynthesis.failedSections.map((f) => f.section);
+    if (keys.length === 0) return;
+    setRetryingSynthesis(true);
+    try {
+      await retryFailedSections(latestSynthesis.id, keys);
+      // Mark as processing so the existing poller picks it up.
+      const refreshed = await getSynthesisFromDb(latestSynthesis.id);
+      if (refreshed) setLatestSynthesis(refreshed);
+      toast.success("Re-running failed sections…");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to re-run sections.");
     } finally {
       setRetryingSynthesis(false);
     }
@@ -479,55 +498,16 @@ function MatterDetailPage() {
                 </button>
               </div>
 
-              {synthRunning && (
-                <div className="mb-6 border border-border p-4">
-                  <p className="text-[13px] text-foreground mb-2">
-                    {synthMessage || "Working…"}
-                  </p>
-                  <Progress value={synthProgress} />
-                </div>
-              )}
-              {!synthRunning && !synthError && latestSynthesis &&
-                latestSynthesis.status !== "complete" &&
-                latestSynthesis.status !== "complete_with_errors" &&
-                latestSynthesis.status !== "error" && (
-                  <div className="mb-6 border border-border p-4">
-                    <p className="text-[13px] text-foreground mb-2">
-                      {latestSynthesis.progressMessage ?? "Preparing…"}
-                    </p>
-                    <Progress value={latestSynthesis.progress} />
-                  </div>
-                )}
-              {synthError && !synthRunning && (
-                <div className="mb-6 border border-destructive/30 p-4">
-                  <p className="text-[13px] text-destructive mb-3">{synthError}</p>
-                  {latestSynthesis?.status === "error" && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmRetry(true)}
-                      disabled={retryingSynthesis}
-                      className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {retryingSynthesis ? "Retrying…" : "Retry synthesis"}
-                    </button>
-                  )}
-                </div>
-              )}
-              {!synthRunning && !synthError && latestSynthesis?.status === "error" && (
-                <div className="mb-6 border border-destructive/30 p-4">
-                  <p className="text-[13px] text-destructive mb-3">
-                    {latestSynthesis.error ?? "Synthesis failed."}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmRetry(true)}
-                    disabled={retryingSynthesis}
-                    className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {retryingSynthesis ? "Retrying…" : "Retry synthesis"}
-                  </button>
-                </div>
-              )}
+              <SynthesisStatusBanner
+                synthRunning={synthRunning}
+                synthProgress={synthProgress}
+                synthMessage={synthMessage}
+                latestSynthesis={latestSynthesis}
+                retryingSynthesis={retryingSynthesis}
+                onRetry={() => setConfirmRetry(true)}
+                onRerunFailed={() => void rerunFailedSubCalls()}
+                onRerunAll={() => setConfirmRetry(true)}
+              />
 
               {/* Cases list */}
               <CaseRowList
@@ -535,6 +515,47 @@ function MatterDetailPage() {
                 matters={otherMatters}
                 onChange={(next) => setCases(next)}
               />
+
+              {/* Inline synthesis report */}
+              {latestSynthesis &&
+                (latestSynthesis.status === "complete" ||
+                  latestSynthesis.status === "complete_with_errors") &&
+                latestSynthesis.result && (
+                  <div className="mt-10 pt-8 border-t border-border">
+                    <div className="mb-4 flex items-baseline justify-between gap-4">
+                      <h2 className="text-[16px] font-medium tracking-[-0.01em]">
+                        Matter Synthesis
+                      </h2>
+                      <Link
+                        to="/matter/$matterId/synthesis/$synthesisId"
+                        params={{
+                          matterId: matter.id,
+                          synthesisId: latestSynthesis.id,
+                        }}
+                        className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Open full report ›
+                      </Link>
+                    </div>
+                    <MatterSynthesisView
+                      synthesis={latestSynthesis.result}
+                      caseLabels={
+                        new Map(
+                          cases.map((c) => [
+                            c.id,
+                            c.snapshot?.caseName || c.caseName || c.id.slice(0, 8),
+                          ]),
+                        )
+                      }
+                      failedSubCallKeys={latestSynthesis.failedSections.map(
+                        (f) => f.section,
+                      )}
+                      onRerun={() => setConfirmRetry(true)}
+                      onRerunFailed={() => void rerunFailedSubCalls()}
+                      rerunDisabled={retryingSynthesis || synthRunning}
+                    />
+                  </div>
+                )}
             </>
           )}
         </section>
@@ -614,6 +635,178 @@ function MatterDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function formatRunTime(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function sectionLabel(key: string): string {
+  return SYNTHESIS_SUB_CALLS[key as keyof typeof SYNTHESIS_SUB_CALLS]?.label ?? key;
+}
+
+interface BannerProps {
+  synthRunning: boolean;
+  synthProgress: number;
+  synthMessage: string;
+  latestSynthesis: MatterSynthesisRow | null;
+  retryingSynthesis: boolean;
+  onRetry: () => void;
+  onRerunFailed: () => void;
+  onRerunAll: () => void;
+}
+
+function SynthesisStatusBanner({
+  synthRunning,
+  synthProgress,
+  synthMessage,
+  latestSynthesis,
+  retryingSynthesis,
+  onRetry,
+  onRerunFailed,
+  onRerunAll,
+}: BannerProps) {
+  const [showErrors, setShowErrors] = useState(false);
+
+  // Active job: either page-local poll (synthRunning) or DB-poll picked up
+  // a non-terminal status.
+  const dbActive =
+    latestSynthesis &&
+    latestSynthesis.status !== "complete" &&
+    latestSynthesis.status !== "complete_with_errors" &&
+    latestSynthesis.status !== "error";
+
+  if (synthRunning || dbActive) {
+    const pct = synthRunning ? synthProgress : (latestSynthesis?.progress ?? 0);
+    const msg =
+      (synthRunning ? synthMessage : latestSynthesis?.progressMessage) ||
+      "Working…";
+    return (
+      <div className="mb-6 border border-border p-4">
+        <p className="text-[13px] text-foreground mb-2">{msg}</p>
+        <Progress value={pct} />
+      </div>
+    );
+  }
+
+  if (!latestSynthesis) return null;
+
+  if (latestSynthesis.status === "complete") {
+    return (
+      <div className="mb-6 border border-emerald-500/40 bg-emerald-500/5 p-4 flex items-start gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] text-foreground font-medium">
+            Synthesis complete.
+          </p>
+          <p className="text-[12px] text-muted-foreground">
+            Last run: {formatRunTime(latestSynthesis.createdAt)}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRerunAll}
+          disabled={retryingSynthesis}
+          className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50"
+        >
+          Re-run
+        </button>
+      </div>
+    );
+  }
+
+  if (latestSynthesis.status === "complete_with_errors") {
+    const failures = latestSynthesis.failedSections;
+    const labels = failures.map((f) => sectionLabel(f.section));
+    return (
+      <div className="mb-6 border border-amber-500/40 bg-amber-500/5 p-4">
+        <div className="flex items-start gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] text-foreground font-medium">
+              Synthesis complete with errors. {failures.length} of 6 sections
+              could not be generated.
+            </p>
+            <p className="text-[12px] text-foreground/80 mt-0.5">
+              Failed: {labels.join(", ")}
+            </p>
+            <p className="text-[12px] text-muted-foreground mt-0.5">
+              Last run: {formatRunTime(latestSynthesis.createdAt)}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onRerunFailed}
+              disabled={retryingSynthesis || failures.length === 0}
+              className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50"
+            >
+              Re-run failed sections
+            </button>
+            <button
+              type="button"
+              onClick={onRerunAll}
+              disabled={retryingSynthesis}
+              className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-border hover:bg-foreground/[0.05] transition-colors disabled:opacity-50"
+            >
+              Re-run all
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowErrors((s) => !s)}
+          className="mt-3 inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronDown
+            className={`w-3 h-3 transition-transform ${showErrors ? "rotate-180" : ""}`}
+          />
+          {showErrors ? "Hide errors" : "Show errors"}
+        </button>
+        {showErrors && (
+          <ul className="mt-2 space-y-2 border-t border-amber-500/30 pt-3">
+            {failures.map((f, i) => (
+              <li key={i} className="text-[12px]">
+                <div className="font-medium text-foreground">
+                  {sectionLabel(f.section)}
+                </div>
+                <div className="text-muted-foreground font-mono text-[11px] leading-snug break-words">
+                  {f.error}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  // status === "error"
+  return (
+    <div className="mb-6 border border-destructive/40 bg-destructive/5 p-4 flex items-start gap-3 flex-wrap">
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] text-destructive font-medium">
+          Synthesis failed.
+        </p>
+        <p className="text-[12px] text-foreground/80 mt-0.5 break-words">
+          {latestSynthesis.error ?? "An unknown error occurred."}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        disabled={retryingSynthesis}
+        className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50"
+      >
+        {retryingSynthesis ? "Retrying…" : "Retry synthesis"}
+      </button>
     </div>
   );
 }
