@@ -102,9 +102,10 @@ async function callClaude(
 }
 
 export const Route = createFileRoute("/api/analyze")({
+  // @ts-expect-error - TanStack server route typing
   server: {
     handlers: {
-      POST: async ({ request }) => {
+      POST: async ({ request }: { request: Request }) => {
         const apiKey = process.env.ANTHROPIC_API_KEY;
         if (!apiKey) {
           return new Response("ANTHROPIC_API_KEY is not configured.", { status: 500 });
