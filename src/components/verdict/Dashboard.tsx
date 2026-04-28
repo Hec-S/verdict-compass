@@ -200,13 +200,9 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
               title={c.title}
               detail={c.detail}
               cite={c.cite}
+              emphasizeDetail
               extra={
-                c.fix ? (
-                  <p className="text-[13px] text-muted-foreground leading-[1.55] mt-2">
-                    <span className="text-foreground">Fix. </span>
-                    {c.fix}
-                  </p>
-                ) : null
+                c.fix ? <FixDisclosure fix={c.fix} /> : null
               }
             />
           ))}
