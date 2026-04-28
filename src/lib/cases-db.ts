@@ -50,3 +50,31 @@ export async function getCaseFromDb(id: string): Promise<StoredCase | null> {
     serverTrace,
   };
 }
+
+export async function updateCaseNameInDb(id: string, caseName: string): Promise<void> {
+  const { error } = await supabase
+    .from("cases")
+    .update({ case_name: caseName })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteCaseFromDb(id: string): Promise<void> {
+  const { data: row, error: fetchErr } = await supabase
+    .from("cases")
+    .select("job_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchErr) throw fetchErr;
+
+  const { error } = await supabase.from("cases").delete().eq("id", id);
+  if (error) throw error;
+
+  if (row?.job_id) {
+    const { error: jobErr } = await supabase
+      .from("analysis_jobs")
+      .delete()
+      .eq("id", row.job_id);
+    if (jobErr) throw jobErr;
+  }
+}
