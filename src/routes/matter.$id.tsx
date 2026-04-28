@@ -311,6 +311,24 @@ function MatterDetailPage() {
     }
   }
 
+  async function rerunFailedSubCalls() {
+    if (!latestSynthesis) return;
+    const keys = latestSynthesis.failedSections.map((f) => f.section);
+    if (keys.length === 0) return;
+    setRetryingSynthesis(true);
+    try {
+      await retryFailedSections(latestSynthesis.id, keys);
+      // Mark as processing so the existing poller picks it up.
+      const refreshed = await getSynthesisFromDb(latestSynthesis.id);
+      if (refreshed) setLatestSynthesis(refreshed);
+      toast.success("Re-running failed sections…");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to re-run sections.");
+    } finally {
+      setRetryingSynthesis(false);
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
