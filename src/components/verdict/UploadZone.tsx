@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Upload, FileText, X } from "lucide-react";
+import { X } from "lucide-react";
 
 interface Props {
   files: File[];
@@ -13,8 +13,8 @@ export function UploadZone({ files, onFiles, disabled }: Props) {
 
   const accept = useCallback(
     (incoming: FileList | File[]) => {
-      const arr = Array.from(incoming).filter((f) =>
-        f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+      const arr = Array.from(incoming).filter(
+        (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
       );
       if (!arr.length) return;
       const merged = [...files];
@@ -27,7 +27,7 @@ export function UploadZone({ files, onFiles, disabled }: Props) {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -41,8 +41,8 @@ export function UploadZone({ files, onFiles, disabled }: Props) {
         }}
         onClick={() => !disabled && inputRef.current?.click()}
         className={[
-          "relative cursor-pointer rounded-xl border-2 border-dashed p-12 text-center transition",
-          drag ? "border-gold bg-gold/5 shadow-gold" : "border-border hover:border-gold/60 hover:bg-secondary/40",
+          "relative cursor-pointer border border-dashed px-6 py-10 text-center transition-colors",
+          drag ? "border-foreground bg-foreground/[0.03]" : "border-border hover:border-foreground/60",
           disabled ? "opacity-60 cursor-not-allowed" : "",
         ].join(" ")}
       >
@@ -54,35 +54,31 @@ export function UploadZone({ files, onFiles, disabled }: Props) {
           className="hidden"
           onChange={(e) => e.target.files && accept(e.target.files)}
         />
-        <div className="mx-auto w-14 h-14 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center mb-4">
-          <Upload className="w-6 h-6 text-gold" />
-        </div>
-        <p className="font-serif text-2xl mb-1">Drop transcript PDFs here</p>
-        <p className="text-sm text-muted-foreground">
-          Or click to browse. Multiple volumes supported (Vol. 1, Vol. 2…).
+        <p className="text-[14px] text-foreground">Drop transcript PDFs here</p>
+        <p className="text-[12px] text-muted-foreground mt-1">
+          Or click to browse. Multiple volumes supported.
         </p>
       </div>
 
       {files.length > 0 && (
-        <ul className="space-y-2">
+        <ul className="border-t border-border">
           {files.map((f, i) => (
             <li
               key={f.name + i}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg bg-secondary/60 border border-border"
+              className="flex items-center gap-3 py-2.5 border-b border-border"
             >
-              <FileText className="w-4 h-4 text-gold flex-shrink-0" />
-              <span className="flex-1 text-sm truncate">{f.name}</span>
-              <span className="text-xs text-muted-foreground">
+              <span className="flex-1 text-[13px] text-foreground truncate">{f.name}</span>
+              <span className="text-[12px] text-muted-foreground tabular-nums">
                 {(f.size / 1024 / 1024).toFixed(2)} MB
               </span>
               <button
                 type="button"
                 onClick={() => onFiles(files.filter((_, j) => j !== i))}
                 disabled={disabled}
-                className="text-muted-foreground hover:text-destructive transition disabled:opacity-30"
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30"
                 aria-label="Remove"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </li>
           ))}
