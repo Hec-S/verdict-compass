@@ -74,6 +74,7 @@ export type Database = {
           case_snapshot: Json | null
           created_at: string
           debug_trace: Json | null
+          deposition_card: Json | null
           id: string
           job_id: string | null
           matter_id: string | null
@@ -88,6 +89,7 @@ export type Database = {
           case_snapshot?: Json | null
           created_at?: string
           debug_trace?: Json | null
+          deposition_card?: Json | null
           id?: string
           job_id?: string | null
           matter_id?: string | null
@@ -102,6 +104,7 @@ export type Database = {
           case_snapshot?: Json | null
           created_at?: string
           debug_trace?: Json | null
+          deposition_card?: Json | null
           id?: string
           job_id?: string | null
           matter_id?: string | null
@@ -120,6 +123,50 @@ export type Database = {
           },
           {
             foreignKeyName: "cases_matter_id_fkey"
+            columns: ["matter_id"]
+            isOneToOne: false
+            referencedRelation: "matters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      matter_syntheses: {
+        Row: {
+          case_ids: string[]
+          created_at: string
+          error: string | null
+          id: string
+          matter_id: string
+          progress: number
+          progress_message: string | null
+          result: Json | null
+          status: string
+        }
+        Insert: {
+          case_ids?: string[]
+          created_at?: string
+          error?: string | null
+          id?: string
+          matter_id: string
+          progress?: number
+          progress_message?: string | null
+          result?: Json | null
+          status?: string
+        }
+        Update: {
+          case_ids?: string[]
+          created_at?: string
+          error?: string | null
+          id?: string
+          matter_id?: string
+          progress?: number
+          progress_message?: string | null
+          result?: Json | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matter_syntheses_matter_id_fkey"
             columns: ["matter_id"]
             isOneToOne: false
             referencedRelation: "matters"

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Pencil, Check, X } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +16,8 @@ import {
   assignCaseToMatter,
   type CaseListRow,
 } from "@/lib/cases-db";
+import { submitSynthesis, getSynthesisFromDb } from "@/lib/synthesis-db";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +44,7 @@ function formatDate(ts: number): string {
 
 function MatterDetailPage() {
   const { id } = Route.useParams();
+  const navigate = useNavigate();
   const [matter, setMatter] = useState<MatterRow | null>(null);
   const [cases, setCases] = useState<CaseListRow[]>([]);
   const [otherMatters, setOtherMatters] = useState<MatterWithCount[]>([]);
@@ -62,6 +65,12 @@ function MatterDetailPage() {
   const [unfiled, setUnfiled] = useState<CaseListRow[] | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
+
+  // synthesis run state
+  const [synthRunning, setSynthRunning] = useState(false);
+  const [synthProgress, setSynthProgress] = useState(0);
+  const [synthMessage, setSynthMessage] = useState<string>("");
+  const [synthError, setSynthError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +167,54 @@ function MatterDetailPage() {
     } finally {
       setAssigningId(null);
     }
+  }
+
+  async function runSynthesis() {
+    if (!matter) return;
+    if (cases.length < 2) {
+      toast.error("Matter needs at least 2 cases to run synthesis.");
+      return;
+    }
+    setSynthRunning(true);
+    setSynthProgress(0);
+    setSynthMessage("Submitting…");
+    setSynthError(null);
+    let synthesisId: string;
+    try {
+      synthesisId = await submitSynthesis(matter.id);
+    } catch (e) {
+      setSynthError(e instanceof Error ? e.message : "Failed to start synthesis.");
+      setSynthRunning(false);
+      return;
+    }
+    // Poll every 3s until complete or error.
+    const start = Date.now();
+    const TIMEOUT_MS = 10 * 60 * 1000;
+    while (Date.now() - start < TIMEOUT_MS) {
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        const row = await getSynthesisFromDb(synthesisId);
+        if (!row) continue;
+        setSynthProgress(row.progress);
+        if (row.progressMessage) setSynthMessage(row.progressMessage);
+        if (row.status === "complete") {
+          navigate({
+            to: "/matter/$matterId/synthesis/$synthesisId",
+            params: { matterId: matter.id, synthesisId },
+          });
+          return;
+        }
+        if (row.status === "error") {
+          setSynthError(row.error ?? "Synthesis failed.");
+          setSynthRunning(false);
+          return;
+        }
+      } catch (e) {
+        console.error("[synthesis poll]", e);
+      }
+    }
+    setSynthError("Synthesis timed out. Please try again.");
+    setSynthRunning(false);
   }
 
   return (
@@ -316,7 +373,32 @@ function MatterDetailPage() {
                 >
                   Add existing case
                 </button>
+                <button
+                  type="button"
+                  onClick={runSynthesis}
+                  disabled={cases.length < 2 || synthRunning}
+                  title={
+                    cases.length < 2
+                      ? "Add at least 2 cases to run synthesis"
+                      : "Run multi-case synthesis"
+                  }
+                  className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {synthRunning ? "Running synthesis…" : "Run synthesis"}
+                </button>
               </div>
+
+              {synthRunning && (
+                <div className="mb-6 border border-border p-4">
+                  <p className="text-[13px] text-foreground mb-2">
+                    {synthMessage || "Working…"}
+                  </p>
+                  <Progress value={synthProgress} />
+                </div>
+              )}
+              {synthError && !synthRunning && (
+                <p className="mb-6 text-[13px] text-destructive">{synthError}</p>
+              )}
 
               {/* Cases list */}
               <CaseRowList
