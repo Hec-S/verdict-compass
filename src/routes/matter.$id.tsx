@@ -16,7 +16,14 @@ import {
   assignCaseToMatter,
   type CaseListRow,
 } from "@/lib/cases-db";
-import { submitSynthesis, getSynthesisFromDb } from "@/lib/synthesis-db";
+import {
+  submitSynthesis,
+  getSynthesisFromDb,
+  getLatestSynthesisForMatter,
+  markSynthesisProcessorNeverStarted,
+  deleteSynthesisFromDb,
+} from "@/lib/synthesis-db";
+import type { MatterSynthesisRow } from "@/lib/analysis-types";
 import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
@@ -41,6 +48,8 @@ function formatDate(ts: number): string {
     year: "numeric",
   });
 }
+
+const SYNTHESIS_START_TIMEOUT_MS = 60 * 1000;
 
 function MatterDetailPage() {
   const { id } = Route.useParams();
@@ -71,12 +80,14 @@ function MatterDetailPage() {
   const [synthProgress, setSynthProgress] = useState(0);
   const [synthMessage, setSynthMessage] = useState<string>("");
   const [synthError, setSynthError] = useState<string | null>(null);
+  const [latestSynthesis, setLatestSynthesis] = useState<MatterSynthesisRow | null>(null);
+  const [retryingSynthesis, setRetryingSynthesis] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([getMatterFromDb(id), listMattersFromDb()])
-      .then(([res, allMatters]) => {
+    Promise.all([getMatterFromDb(id), listMattersFromDb(), getLatestSynthesisForMatter(id)])
+      .then(([res, allMatters, latest]) => {
         if (cancelled) return;
         if (!res) {
           setError("Matter not found.");
@@ -84,6 +95,7 @@ function MatterDetailPage() {
           setMatter(res.matter);
           setCases(res.cases);
           setOtherMatters(allMatters.filter((m) => m.id !== id));
+          setLatestSynthesis(latest);
         }
       })
       .catch((e) => {
