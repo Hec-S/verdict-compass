@@ -1,6 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+export const config = { runtime: "edge" };
+
+const TRANSCRIPT_CHAR_LIMIT = 60_000;
+
+type RuntimeGlobals = typeof globalThis & {
+  Deno?: { env?: { get?: (key: string) => string | undefined } };
+  process?: { env?: Record<string, string | undefined> };
+};
+
+function getAnthropicApiKey(): string | undefined {
+  const runtime = globalThis as RuntimeGlobals;
+  return runtime.Deno?.env?.get?.("ANTHROPIC_API_KEY") ?? runtime.process?.env?.ANTHROPIC_API_KEY;
+}
+
 const InputSchema = z.object({
   caseName: z.string().min(1).max(300),
   transcript: z.string().min(50).max(110_000).optional(),
@@ -90,12 +104,12 @@ async function callClaude(
       method: "POST",
       signal: controller.signal,
       headers: {
+        "Content-Type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
+        model: "claude-sonnet-4-20250514",
         max_tokens: maxTokens,
         system,
         messages: [{ role: "user", content: userMessage }],
@@ -130,18 +144,23 @@ export const Route = createFileRoute("/api/analyze")({
   server: {
     handlers: {
       POST: async ({ request }: { request: Request }) => {
-        const apiKey = process.env.ANTHROPIC_API_KEY;
+        console.log("Edge function started");
+        const apiKey = getAnthropicApiKey();
         if (!apiKey) {
-          return new Response("ANTHROPIC_API_KEY is not configured.", { status: 500 });
+          return Response.json(
+            { error: true, message: "ANTHROPIC_API_KEY is not configured.", stage: "configuration" },
+            { status: 500 },
+          );
         }
 
         let parsedInput: z.infer<typeof InputSchema>;
         try {
           const body = await request.json();
+          console.log("Payload size received:", JSON.stringify(body).length, "characters");
           parsedInput = InputSchema.parse(body);
         } catch (e) {
-          return new Response(
-            e instanceof Error ? e.message : "Invalid request body",
+          return Response.json(
+            { error: true, message: e instanceof Error ? e.message : "Invalid request body", stage: "validation" },
             { status: 400 },
           );
         }
@@ -163,21 +182,29 @@ export const Route = createFileRoute("/api/analyze")({
             const failed: string[] = [];
             const timedOutSections: string[] = [];
             let summary: string = parsedInput.summary ?? "";
+            let currentStage = "initializing";
 
             try {
               const totalSteps = 1 + SECTIONS.length;
 
               // ===== Call 0: compression pre-pass (skip if summary was provided) =====
               if (!summary) {
+                currentStage = "compression";
                 send({ type: "progress", step: 1, total: totalSteps, label: "Reading the transcript…" });
-                const rawTranscript = (parsedInput.transcript ?? "").slice(0, 80_000);
+                const rawInput = parsedInput.transcript ?? "";
+                console.log("Raw payload length:", rawInput.length);
+                const rawTranscript = rawInput.slice(0, TRANSCRIPT_CHAR_LIMIT);
+                console.log("Truncated payload length:", rawTranscript.length);
                 try {
+                  console.log("Starting compression call (Call 0)...");
+                  const t0 = Date.now();
                   const raw = await callClaude(
                     apiKey,
                     "You produce dense, faithful litigation summaries.",
                     `${COMPRESSION_PROMPT}\n\nCase label: ${parsedInput.caseName}\n\nTranscript:\n${rawTranscript}`,
-                    2000,
+                    1500,
                   );
+                  console.log("Compression call completed in", Date.now() - t0, "ms");
                   console.log(`[analyze] compression raw length=${raw.length}`);
                   summary = raw.trim();
                 } catch (err) {
@@ -194,12 +221,16 @@ export const Route = createFileRoute("/api/analyze")({
               // ===== Calls 1-4: analysis sections, all against the compressed summary =====
               for (let i = 0; i < SECTIONS.length; i++) {
                 const section = SECTIONS[i];
+                currentStage = section.key;
                 send({ type: "progress", step: i + 2, total: totalSteps, label: section.label });
 
                 const userMessage = `Analyze this litigation transcript summary and return ONLY this JSON structure with no other text:\n${section.schema}\n\nCase label: ${parsedInput.caseName}\n\nSummary:\n${summary}`;
 
                 try {
+                  console.log(`Starting analysis call ${i + 1} (${section.key})...`);
+                  const t = Date.now();
                   const raw = await callClaude(apiKey, SYSTEM_PROMPT, userMessage, 1500);
+                  console.log(`Call ${i + 1} (${section.key}) completed in`, Date.now() - t, "ms");
                   console.log(`[analyze] section=${section.key} raw response:`, raw);
                   const parsed = extractJSON(raw);
                   Object.assign(merged, parsed);
@@ -223,7 +254,7 @@ export const Route = createFileRoute("/api/analyze")({
               controller.close();
             } catch (e) {
               console.error("[analyze] fatal:", e);
-              send({ type: "error", message: e instanceof Error ? e.message : "Unknown error" });
+              send({ type: "error", message: e instanceof Error ? e.message : "Unknown error", stage: currentStage });
               controller.close();
             }
           },

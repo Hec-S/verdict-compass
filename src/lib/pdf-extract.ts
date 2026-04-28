@@ -6,7 +6,7 @@ if (typeof window !== "undefined") {
   pdfjs.GlobalWorkerOptions.workerPort = new PdfWorker();
 }
 
-export const MAX_CHARS = 80_000;
+export const MAX_CHARS = 60_000;
 
 export interface ExtractedPdf {
   name: string;
