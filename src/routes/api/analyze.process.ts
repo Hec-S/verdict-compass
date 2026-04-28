@@ -148,12 +148,24 @@ In the "role" field, identify which side called the witness using one of: "Defen
   },
 ];
 
-function extractJSON(raw: string): Record<string, unknown> {
+function extractJSON(raw: string, label = "section"): Record<string, unknown> {
   const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("No JSON in response: " + cleaned.slice(0, 200));
-  return JSON.parse(cleaned.slice(start, end + 1));
+  if (start === -1 || end === -1) {
+    console.error(`[process] ${label} extractJSON: no braces. Raw start:`, cleaned.slice(0, 500));
+    throw new Error("No JSON in response: " + cleaned.slice(0, 200));
+  }
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch (err) {
+    console.error(
+      `[process] ${label} extractJSON parse failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    console.error(`[process] ${label} raw response:`, cleaned.slice(0, 1500));
+    throw err;
+  }
 }
 
 async function callClaude(
@@ -245,9 +257,63 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
       const userMessage = `${FRAMING}\n\n${section.instructions ? section.instructions + "\n\n" : ""}Analyze this litigation transcript summary and return ONLY this JSON structure with no other text:\n${section.schema}\n\nCase label: ${caseName}\n\nSummary:\n${summary}`;
       try {
         const t = Date.now();
+        console.log(
+          `[process] section=${section.key} START payload=${userMessage.length} chars, summary=${summary.length} chars`,
+        );
         const raw = await callClaude(apiKey, SYSTEM_PROMPT, userMessage, 3000);
         console.log(`[process] section=${section.key} ok in ${Date.now() - t}ms`);
-        Object.assign(merged, extractJSON(raw));
+        let parsed = extractJSON(raw, section.key);
+
+        // Findings-specific retry: if Claude returned empty wentWell/wentPoorly,
+        // re-ask with a stripped-down prompt that demands 3-5 items each.
+        if (section.key === "findings") {
+          const ww = Array.isArray((parsed as { wentWell?: unknown[] }).wentWell)
+            ? ((parsed as { wentWell: unknown[] }).wentWell as unknown[]).length
+            : 0;
+          const wp = Array.isArray((parsed as { wentPoorly?: unknown[] }).wentPoorly)
+            ? ((parsed as { wentPoorly: unknown[] }).wentPoorly as unknown[]).length
+            : 0;
+          console.log(
+            `[process] section=findings counts wentWell=${ww} wentPoorly=${wp}`,
+          );
+          if (ww === 0 || wp === 0) {
+            console.warn(
+              `[process] section=findings empty arrays, retrying with simpler prompt`,
+            );
+            const trimmedSummary =
+              summary.length > 20_000 ? summary.slice(0, 20_000) : summary;
+            const retryPrompt = `You support DEFENSE COUNSEL. Identify 3-5 specific things that helped the defense and 3-5 specific things that hurt or threatened the defense in this trial. Even if the defense won, find 3 things that could have gone better. Even if the defense lost, find 3 things they did well.\n\nReturn ONLY this JSON, no markdown, no prose:\n{"wentWell":[{"category":"","title":"","detail":"","cite":""}],"wentPoorly":[{"category":"","title":"","detail":"","cite":"","fix":""}]}\n\nTRANSCRIPT SUMMARY:\n${trimmedSummary}`;
+            try {
+              const retryRaw = await callClaude(
+                apiKey,
+                SYSTEM_PROMPT,
+                retryPrompt,
+                3000,
+              );
+              const retryParsed = extractJSON(retryRaw, "findings_retry");
+              const rww = Array.isArray(
+                (retryParsed as { wentWell?: unknown[] }).wentWell,
+              )
+                ? ((retryParsed as { wentWell: unknown[] }).wentWell as unknown[])
+                    .length
+                : 0;
+              const rwp = Array.isArray(
+                (retryParsed as { wentPoorly?: unknown[] }).wentPoorly,
+              )
+                ? ((retryParsed as { wentPoorly: unknown[] }).wentPoorly as unknown[])
+                    .length
+                : 0;
+              console.log(
+                `[process] findings_retry counts wentWell=${rww} wentPoorly=${rwp}`,
+              );
+              parsed = retryParsed;
+            } catch (retryErr) {
+              console.error(`[process] findings_retry failed:`, retryErr);
+            }
+          }
+        }
+
+        Object.assign(merged, parsed);
       } catch (err) {
         console.error(`[process] section=${section.key} failed:`, err);
         Object.assign(merged, section.fallback);
