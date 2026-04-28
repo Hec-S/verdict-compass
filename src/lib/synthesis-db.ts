@@ -40,6 +40,42 @@ export async function getSynthesisFromDb(
   return rowToSynthesis(data);
 }
 
+export async function getLatestSynthesisForMatter(
+  matterId: string,
+): Promise<MatterSynthesisRow | null> {
+  const { data, error } = await supabase
+    .from("matter_syntheses")
+    .select(
+      "id, matter_id, result, case_ids, created_at, status, progress, progress_message, error",
+    )
+    .eq("matter_id", matterId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return rowToSynthesis(data);
+}
+
+export async function markSynthesisProcessorNeverStarted(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("matter_syntheses")
+    .update({
+      status: "error",
+      error: "Synthesis processor never started. Click Re-run to try again.",
+      progress_message: "Synthesis failed.",
+    })
+    .eq("id", id)
+    .eq("status", "pending")
+    .eq("progress", 0);
+  if (error) throw error;
+}
+
+export async function deleteSynthesisFromDb(id: string): Promise<void> {
+  const { error } = await supabase.from("matter_syntheses").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function submitSynthesis(matterId: string): Promise<string> {
   const res = await fetch("/api/synthesize/submit", {
     method: "POST",

@@ -389,13 +389,31 @@ async function updateSynthesis(
   if (error) console.error("[synthesize.process] updateSynthesis error:", error.message);
 }
 
-async function runSynthesis(
-  supabase: SupabaseClient,
-  synthesisId: string,
-  apiKey: string,
-) {
+function createSynthesisClient(): SupabaseClient {
+  const SUPABASE_URL = getEnv("SUPABASE_URL") ?? getEnv("VITE_SUPABASE_URL");
+  const SUPABASE_KEY =
+    getEnv("SUPABASE_SERVICE_ROLE_KEY") ??
+    getEnv("SUPABASE_PUBLISHABLE_KEY") ??
+    getEnv("VITE_SUPABASE_PUBLISHABLE_KEY");
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error("Backend not configured");
+  }
+  return createClient(SUPABASE_URL, SUPABASE_KEY);
+}
+
+function labelCase(c: CaseRow): string {
+  const snapshot = (c.case_snapshot as Partial<CaseSnapshot> | null) ?? null;
+  return snapshot?.caseName || c.case_name || c.id.slice(0, 8);
+}
+
+export async function runSynthesis(synthesisId: string) {
   console.log(`[synthesize.process] starting ${synthesisId}`);
+  let supabase: SupabaseClient | null = null;
   try {
+    supabase = createSynthesisClient();
+    const apiKey = getEnv("ANTHROPIC_API_KEY");
+    if (!apiKey) throw new Error("Anthropic API key not configured");
+
     const { data: row, error: rErr } = await supabase
       .from("matter_syntheses")
       .select("id, matter_id, status, case_ids")
@@ -409,8 +427,9 @@ async function runSynthesis(
 
     await updateSynthesis(supabase, synthesisId, {
       status: "processing",
-      progress: 5,
-      progress_message: "Loading matter…",
+      progress: 1,
+      progress_message: "Starting synthesis...",
+      error: null,
     });
 
     const { data: matter, error: mErr } = await supabase
@@ -439,7 +458,7 @@ async function runSynthesis(
       }
       await updateSynthesis(supabase, synthesisId, {
         progress: Math.min(10 + Math.floor((idx / caseRows.length) * 70), 80),
-        progress_message: `Extracting deposition card ${idx} of ${caseRows.length}…`,
+        progress_message: `Extracting card ${idx} of ${caseRows.length}: ${labelCase(c)}`,
       });
       const card = await extractDepositionCard(apiKey, c);
       const { error: upErr } = await supabase
@@ -458,7 +477,7 @@ async function runSynthesis(
     // Stage B — synthesize.
     await updateSynthesis(supabase, synthesisId, {
       progress: 85,
-      progress_message: "Running case-level synthesis…",
+      progress_message: "Running case-level synthesis",
     });
     const result = await synthesizeMatter(apiKey, matter as MatterRow, cards);
 
@@ -472,11 +491,13 @@ async function runSynthesis(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[synthesize.process] ${synthesisId} fatal:`, message);
-    await updateSynthesis(supabase, synthesisId, {
-      status: "error",
-      error: message,
-      progress_message: "Synthesis failed.",
-    });
+    if (supabase) {
+      await updateSynthesis(supabase, synthesisId, {
+        status: "error",
+        error: message,
+        progress_message: "Synthesis failed.",
+      });
+    }
   }
 }
 
@@ -493,15 +514,7 @@ export const Route = createFileRoute("/api/synthesize/process")({
             { status: 400 },
           );
         }
-        const SUPABASE_URL = getEnv("SUPABASE_URL") ?? getEnv("VITE_SUPABASE_URL");
-        const SUPABASE_KEY =
-          getEnv("SUPABASE_PUBLISHABLE_KEY") ?? getEnv("VITE_SUPABASE_PUBLISHABLE_KEY");
-        const apiKey = getEnv("ANTHROPIC_API_KEY");
-        if (!SUPABASE_URL || !SUPABASE_KEY || !apiKey) {
-          return Response.json({ error: "Backend not configured" }, { status: 500 });
-        }
-        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-        await runSynthesis(supabase, parsed.synthesisId, apiKey);
+        await runSynthesis(parsed.synthesisId);
         return Response.json({ ok: true });
       },
     },

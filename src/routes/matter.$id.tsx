@@ -16,7 +16,14 @@ import {
   assignCaseToMatter,
   type CaseListRow,
 } from "@/lib/cases-db";
-import { submitSynthesis, getSynthesisFromDb } from "@/lib/synthesis-db";
+import {
+  submitSynthesis,
+  getSynthesisFromDb,
+  getLatestSynthesisForMatter,
+  markSynthesisProcessorNeverStarted,
+  deleteSynthesisFromDb,
+} from "@/lib/synthesis-db";
+import type { MatterSynthesisRow } from "@/lib/analysis-types";
 import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
@@ -26,6 +33,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/matter/$id")({
   head: () => ({
@@ -41,6 +58,8 @@ function formatDate(ts: number): string {
     year: "numeric",
   });
 }
+
+const SYNTHESIS_START_TIMEOUT_MS = 60 * 1000;
 
 function MatterDetailPage() {
   const { id } = Route.useParams();
@@ -71,12 +90,15 @@ function MatterDetailPage() {
   const [synthProgress, setSynthProgress] = useState(0);
   const [synthMessage, setSynthMessage] = useState<string>("");
   const [synthError, setSynthError] = useState<string | null>(null);
+  const [latestSynthesis, setLatestSynthesis] = useState<MatterSynthesisRow | null>(null);
+  const [retryingSynthesis, setRetryingSynthesis] = useState(false);
+  const [confirmRetry, setConfirmRetry] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([getMatterFromDb(id), listMattersFromDb()])
-      .then(([res, allMatters]) => {
+    Promise.all([getMatterFromDb(id), listMattersFromDb(), getLatestSynthesisForMatter(id)])
+      .then(([res, allMatters, latest]) => {
         if (cancelled) return;
         if (!res) {
           setError("Matter not found.");
@@ -84,6 +106,7 @@ function MatterDetailPage() {
           setMatter(res.matter);
           setCases(res.cases);
           setOtherMatters(allMatters.filter((m) => m.id !== id));
+          setLatestSynthesis(latest);
         }
       })
       .catch((e) => {
@@ -108,6 +131,39 @@ function MatterDetailPage() {
       descRef.current.focus();
     }
   }, [editingDesc]);
+
+  useEffect(() => {
+    if (!latestSynthesis) return;
+    if (latestSynthesis.status === "complete" || latestSynthesis.status === "error") return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const row = await getSynthesisFromDb(latestSynthesis.id);
+        if (cancelled || !row) return;
+        if (
+          row.status === "pending" &&
+          row.progress === 0 &&
+          Date.now() - row.createdAt > SYNTHESIS_START_TIMEOUT_MS
+        ) {
+          await markSynthesisProcessorNeverStarted(row.id);
+          setLatestSynthesis({
+            ...row,
+            status: "error",
+            error: "Synthesis processor never started. Click Re-run to try again.",
+            progressMessage: "Synthesis failed.",
+          });
+          return;
+        }
+        setLatestSynthesis(row);
+      } catch (e) {
+        console.error("[synthesis latest poll]", e);
+      }
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [latestSynthesis?.id, latestSynthesis?.status]);
 
   async function saveName() {
     if (!matter) return;
@@ -182,6 +238,8 @@ function MatterDetailPage() {
     let synthesisId: string;
     try {
       synthesisId = await submitSynthesis(matter.id);
+      const created = await getSynthesisFromDb(synthesisId);
+      if (created) setLatestSynthesis(created);
     } catch (e) {
       setSynthError(e instanceof Error ? e.message : "Failed to start synthesis.");
       setSynthRunning(false);
@@ -195,6 +253,19 @@ function MatterDetailPage() {
       try {
         const row = await getSynthesisFromDb(synthesisId);
         if (!row) continue;
+        if (
+          row.status === "pending" &&
+          row.progress === 0 &&
+          Date.now() - row.createdAt > SYNTHESIS_START_TIMEOUT_MS
+        ) {
+          await markSynthesisProcessorNeverStarted(row.id);
+          const message = "Synthesis processor never started. Click Re-run to try again.";
+          setLatestSynthesis({ ...row, status: "error", error: message });
+          setSynthError(message);
+          setSynthRunning(false);
+          return;
+        }
+        setLatestSynthesis(row);
         setSynthProgress(row.progress);
         if (row.progressMessage) setSynthMessage(row.progressMessage);
         if (row.status === "complete") {
@@ -215,6 +286,21 @@ function MatterDetailPage() {
     }
     setSynthError("Synthesis timed out. Please try again.");
     setSynthRunning(false);
+  }
+
+  async function retryErroredSynthesis() {
+    if (!matter || !latestSynthesis || latestSynthesis.status !== "error") return;
+    setRetryingSynthesis(true);
+    setSynthError(null);
+    try {
+      await deleteSynthesisFromDb(latestSynthesis.id);
+      setLatestSynthesis(null);
+      await runSynthesis();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to retry synthesis.");
+    } finally {
+      setRetryingSynthesis(false);
+    }
   }
 
   return (
@@ -396,8 +482,44 @@ function MatterDetailPage() {
                   <Progress value={synthProgress} />
                 </div>
               )}
+              {!synthRunning && !synthError && latestSynthesis &&
+                latestSynthesis.status !== "complete" && latestSynthesis.status !== "error" && (
+                  <div className="mb-6 border border-border p-4">
+                    <p className="text-[13px] text-foreground mb-2">
+                      {latestSynthesis.progressMessage ?? "Preparing…"}
+                    </p>
+                    <Progress value={latestSynthesis.progress} />
+                  </div>
+                )}
               {synthError && !synthRunning && (
-                <p className="mb-6 text-[13px] text-destructive">{synthError}</p>
+                <div className="mb-6 border border-destructive/30 p-4">
+                  <p className="text-[13px] text-destructive mb-3">{synthError}</p>
+                  {latestSynthesis?.status === "error" && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRetry(true)}
+                      disabled={retryingSynthesis}
+                      className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {retryingSynthesis ? "Retrying…" : "Retry synthesis"}
+                    </button>
+                  )}
+                </div>
+              )}
+              {!synthRunning && !synthError && latestSynthesis?.status === "error" && (
+                <div className="mb-6 border border-destructive/30 p-4">
+                  <p className="text-[13px] text-destructive mb-3">
+                    {latestSynthesis.error ?? "Synthesis failed."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRetry(true)}
+                    disabled={retryingSynthesis}
+                    className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {retryingSynthesis ? "Retrying…" : "Retry synthesis"}
+                  </button>
+                </div>
               )}
 
               {/* Cases list */}
@@ -462,6 +584,29 @@ function MatterDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmRetry} onOpenChange={setConfirmRetry}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Retry synthesis?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This deletes the failed synthesis row and starts a fresh run for this matter.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmRetry(false);
+                void retryErroredSynthesis();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Retry synthesis
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
