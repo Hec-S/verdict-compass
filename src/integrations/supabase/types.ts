@@ -22,6 +22,7 @@ export type Database = {
           error: string | null
           failed_sections: Json
           id: string
+          matter_id: string | null
           progress: number
           progress_message: string
           result: Json | null
@@ -35,6 +36,7 @@ export type Database = {
           error?: string | null
           failed_sections?: Json
           id?: string
+          matter_id?: string | null
           progress?: number
           progress_message?: string
           result?: Json | null
@@ -48,13 +50,22 @@ export type Database = {
           error?: string | null
           failed_sections?: Json
           id?: string
+          matter_id?: string | null
           progress?: number
           progress_message?: string
           result?: Json | null
           status?: string
           transcript_text?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "analysis_jobs_matter_id_fkey"
+            columns: ["matter_id"]
+            isOneToOne: false
+            referencedRelation: "matters"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cases: {
         Row: {
@@ -65,6 +76,7 @@ export type Database = {
           debug_trace: Json | null
           id: string
           job_id: string | null
+          matter_id: string | null
           outcome: string | null
           result: Json
           starred: boolean
@@ -78,6 +90,7 @@ export type Database = {
           debug_trace?: Json | null
           id?: string
           job_id?: string | null
+          matter_id?: string | null
           outcome?: string | null
           result: Json
           starred?: boolean
@@ -91,6 +104,7 @@ export type Database = {
           debug_trace?: Json | null
           id?: string
           job_id?: string | null
+          matter_id?: string | null
           outcome?: string | null
           result?: Json
           starred?: boolean
@@ -104,7 +118,38 @@ export type Database = {
             referencedRelation: "analysis_jobs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cases_matter_id_fkey"
+            columns: ["matter_id"]
+            isOneToOne: false
+            referencedRelation: "matters"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      matters: {
+        Row: {
+          archived: boolean
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          archived?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          archived?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
     }
     Views: {
