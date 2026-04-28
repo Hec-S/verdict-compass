@@ -7,6 +7,7 @@ const TRANSCRIPT_CHAR_LIMIT = 60_000;
 const InputSchema = z.object({
   caseName: z.string().min(1).max(300),
   transcript: z.string().min(50).max(120_000),
+  matterId: z.string().uuid().nullable().optional(),
 });
 
 function getEnv(key: string): string | undefined {
@@ -60,6 +61,7 @@ export const Route = createFileRoute("/api/analyze/submit")({
             status: "pending",
             progress: 0,
             progress_message: "Queued…",
+            matter_id: parsed.matterId ?? null,
           })
           .select("id")
           .single();

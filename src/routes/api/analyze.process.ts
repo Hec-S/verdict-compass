@@ -245,7 +245,7 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
   try {
     const { data: job, error: fetchErr } = await supabase
       .from("analysis_jobs")
-      .select("transcript_text, case_name, status")
+      .select("transcript_text, case_name, status, matter_id")
       .eq("id", jobId)
       .single();
     if (fetchErr || !job) throw new Error(fetchErr?.message ?? "Job not found");
@@ -255,6 +255,7 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
     }
     const transcript = job.transcript_text ?? "";
     const caseName = job.case_name ?? "";
+    const matterId = (job as { matter_id?: string | null }).matter_id ?? null;
     trace.add("server_received_transcript", {
       caseName,
       totalLength: transcript.length,
@@ -442,6 +443,7 @@ async function runJob(supabase: SupabaseClient, jobId: string, apiKey: string) {
           outcome:
             typeof snapshot?.outcome === "string" ? (snapshot.outcome as string) : null,
           debug_trace: trace.events,
+          matter_id: matterId,
         })
         .select("id")
         .single();

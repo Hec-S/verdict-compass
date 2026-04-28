@@ -1,5 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { z } from "zod";
+import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { UploadZone } from "@/components/verdict/UploadZone";
 import { extractPdfText, combineAndCap, MAX_CHARS } from "@/lib/pdf-extract";
@@ -7,6 +9,11 @@ import { submitAnalysis, AnalysisFailedError } from "@/lib/analyze-client";
 import { saveClientTrace, type ClientTraceEvent } from "@/lib/debug-trace";
 
 export const Route = createFileRoute("/new")({
+  validateSearch: zodValidator(
+    z.object({
+      matterId: fallback(z.string().uuid().optional(), undefined),
+    }),
+  ),
   head: () => ({
     meta: [
       { title: "New analysis — VerdictIQ" },
@@ -21,6 +28,7 @@ export const Route = createFileRoute("/new")({
 
 function NewAnalysisPage() {
   const navigate = useNavigate();
+  const { matterId } = Route.useSearch();
   const [files, setFiles] = useState<File[]>([]);
   const [caseName, setCaseName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +101,7 @@ function NewAnalysisPage() {
         first2000: text.slice(0, 2000),
         last2000: text.slice(-2000),
       });
-      const jobId = await submitAnalysis(caseName.trim(), text);
+      const jobId = await submitAnalysis(caseName.trim(), text, matterId ?? null);
       log("client_submitted", { jobId });
       saveClientTrace(jobId, traceEvents);
       navigate({ to: "/analyzing/$jobId", params: { jobId } });

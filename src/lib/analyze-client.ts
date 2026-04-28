@@ -29,11 +29,12 @@ export class AnalysisTimeoutError extends Error {
 export async function submitAnalysis(
   caseName: string,
   transcript: string,
+  matterId?: string | null,
 ): Promise<string> {
   const submitRes = await fetch("/api/analyze/submit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ caseName, transcript }),
+    body: JSON.stringify({ caseName, transcript, matterId: matterId ?? null }),
   });
   if (!submitRes.ok) {
     const text = await submitRes.text().catch(() => "");
