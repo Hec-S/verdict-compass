@@ -1,9 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Check, X } from "lucide-react";
+import { Pencil, Check, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { CaseRowList } from "@/components/verdict/CaseRow";
+import { MatterSynthesisView } from "@/components/verdict/MatterSynthesisView";
 import {
   getMatterFromDb,
   updateMatterInDb,
@@ -22,8 +23,10 @@ import {
   getLatestSynthesisForMatter,
   markSynthesisProcessorNeverStarted,
   deleteSynthesisFromDb,
+  retryFailedSections,
 } from "@/lib/synthesis-db";
 import type { MatterSynthesisRow } from "@/lib/analysis-types";
+import { SYNTHESIS_SUB_CALLS } from "@/lib/analysis-types";
 import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
