@@ -46,11 +46,29 @@ const SECTIONS: SectionSpec[] = [
     label: "Identifying key moments… (2/5)",
     progress: 30,
     schema: `{
-  "caseSnapshot": { "caseName": "", "court": "", "parties": "", "outcome": "", "bottomLine": "" },
+  "caseSnapshot": {
+    "caseName": "string - case name only, e.g. 'In Re Juan J. Cruz, No. 13-25-00460-CV'",
+    "court": "string - court name only, no parties or posture, max 8 words",
+    "posture": "string - procedural posture in 2-4 words, e.g. 'Mandamus proceeding' or 'Jury trial'",
+    "plaintiff": "string - plaintiff or relator name only",
+    "defendant": "string - defendant or real party in interest name only",
+    "filed": "string - date the underlying incident or filing occurred, e.g. 'September 20, 2019'",
+    "outcome": "string - final outcome in 2-5 words, e.g. 'Defense verdict (reinstated)'",
+    "bottomLine": "string - ONE sentence, max 25 words, plain English, lead with core fact not procedure. No medical details, expert names, or procedural history."
+  },
   "criticalMoments": [ { "page": "", "parties": "", "what": "", "why": "" } ]
 }`,
     fallback: {
-      caseSnapshot: { caseName: "", court: "", parties: "", outcome: "", bottomLine: "" },
+      caseSnapshot: {
+        caseName: "",
+        court: "",
+        posture: "",
+        plaintiff: "",
+        defendant: "",
+        filed: "",
+        outcome: "",
+        bottomLine: "",
+      },
       criticalMoments: [],
     },
   },

@@ -3,7 +3,10 @@ export type Credibility = "Strong" | "Mixed" | "Weak";
 export interface CaseSnapshot {
   caseName: string;
   court: string;
-  parties: string;
+  posture: string;
+  plaintiff: string;
+  defendant: string;
+  filed: string;
   outcome: string;
   bottomLine: string;
 }

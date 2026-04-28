@@ -80,7 +80,15 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
   const snap = r.caseSnapshot ?? ({} as any);
   const missing = new Set(stored.missingSections ?? []);
 
-  const metaParts = [snap.court, snap.parties, snap.outcome].filter(Boolean);
+  const metaFields: { label: string; value?: string }[] = [
+    { label: "Court", value: snap.court },
+    { label: "Posture", value: snap.posture },
+    { label: "Plaintiff", value: snap.plaintiff },
+    { label: "Defendant", value: snap.defendant },
+    { label: "Filed", value: snap.filed },
+    { label: "Outcome", value: snap.outcome },
+  ];
+  const hasMeta = metaFields.some((f) => f.value);
 
   return (
     <div className="max-w-[880px] mx-auto px-8 py-10 print:py-2 print:max-w-none">
@@ -92,13 +100,22 @@ export function Dashboard({ stored }: { stored: StoredCase }) {
             <h1 className="text-[22px] font-medium tracking-[-0.01em] leading-tight">
               {snap.caseName || stored.caseName}
             </h1>
-            {metaParts.length > 0 && (
-              <p className="text-[13px] text-muted-foreground mt-2">
-                {metaParts.join(" · ")}
-              </p>
+            {hasMeta && (
+              <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 max-w-[560px]">
+                {metaFields.map((f) =>
+                  f.value ? (
+                    <div key={f.label}>
+                      <dt className="text-[11px] text-muted-foreground">{f.label}</dt>
+                      <dd className="text-[13px] text-foreground leading-[1.4] mt-0.5">
+                        {f.value}
+                      </dd>
+                    </div>
+                  ) : null,
+                )}
+              </dl>
             )}
             {snap.bottomLine && (
-              <p className="text-[14px] text-foreground leading-[1.55] mt-3 max-w-[640px]">
+              <p className="text-[14px] text-foreground leading-[1.5] mt-5 max-w-[640px]">
                 {snap.bottomLine}
               </p>
             )}

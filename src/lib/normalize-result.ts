@@ -26,7 +26,10 @@ export function normalizeResult(raw: unknown): {
     caseSnapshot: {
       caseName: String(snap.caseName ?? ""),
       court: String(snap.court ?? ""),
-      parties: String(snap.parties ?? ""),
+      posture: String(snap.posture ?? ""),
+      plaintiff: String(snap.plaintiff ?? ""),
+      defendant: String(snap.defendant ?? ""),
+      filed: String(snap.filed ?? ""),
       outcome: String(snap.outcome ?? ""),
       bottomLine: String(snap.bottomLine ?? ""),
     },
