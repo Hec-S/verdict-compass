@@ -199,7 +199,7 @@ function extractJSON(raw: string, label = "section"): Record<string, unknown> {
   }
 }
 
-async function callClaude(
+export async function callClaude(
   apiKey: string,
   system: string,
   user: string,
