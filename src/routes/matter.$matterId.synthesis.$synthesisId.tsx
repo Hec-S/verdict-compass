@@ -73,7 +73,12 @@ function MatterSynthesisPage() {
   // Poll while still processing.
   useEffect(() => {
     if (!synth) return;
-    if (synth.status === "complete" || synth.status === "error") return;
+    if (
+      synth.status === "complete" ||
+      synth.status === "complete_with_errors" ||
+      synth.status === "error"
+    )
+      return;
     let cancelled = false;
     const interval = setInterval(async () => {
       try {
@@ -95,7 +100,11 @@ function MatterSynthesisPage() {
           return;
         }
         setSynth(row);
-        if (row.status === "complete" || row.status === "error") {
+        if (
+          row.status === "complete" ||
+          row.status === "complete_with_errors" ||
+          row.status === "error"
+        ) {
           clearInterval(interval);
         }
       } catch (e) {
@@ -164,6 +173,7 @@ function MatterSynthesisPage() {
                 {synth.caseIds.length === 1 ? "case" : "cases"} included
               </p>
               {synth.status !== "complete" && synth.status !== "error" && (
+                synth.status !== "complete_with_errors" &&
                 <div className="mb-6 border border-border p-4">
                   <p className="text-[13px] text-foreground mb-2">
                     {synth.progressMessage ?? "Preparing…"}
@@ -184,13 +194,29 @@ function MatterSynthesisPage() {
                   </button>
                 </div>
               )}
-              {synth.status === "complete" && synth.result && (
+              {(synth.status === "complete" ||
+                synth.status === "complete_with_errors") &&
+                synth.result && (
+                <>
+                  {synth.status === "complete_with_errors" &&
+                    synth.failedSections.length > 0 && (
+                      <div className="mb-6 border border-amber-500/40 bg-amber-500/10 p-4 print:hidden">
+                        <p className="text-[13px] text-foreground">
+                          Some synthesis sections could not be generated:{" "}
+                          <span className="font-medium">
+                            {synth.failedSections.join(", ")}
+                          </span>
+                          . The rest of the synthesis is available below.
+                        </p>
+                      </div>
+                    )}
                 <MatterSynthesisView
                   synthesis={synth.result}
                   caseLabels={caseLabels}
                   onRerun={handleRerun}
                   rerunDisabled={rerunning}
                 />
+                </>
               )}
             </>
           )}
