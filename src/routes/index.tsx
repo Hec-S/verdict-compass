@@ -40,7 +40,30 @@ function Index() {
   const [parseFailCount, setParseFailCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [truncatedNotice, setTruncatedNotice] = useState<string | null>(null);
+  const [extractedInfo, setExtractedInfo] = useState<{ chars: number; truncated: boolean } | null>(null);
+  const [extracting, setExtracting] = useState(false);
   const lastPayload = useRef<PreparedPayload | null>(null);
+  const cachedSummary = useRef<string | null>(null);
+
+  // Extract + clean PDFs as soon as files are selected, so we can show char count.
+  async function handleFilesChange(next: File[]) {
+    setFiles(next);
+    cachedSummary.current = null;
+    lastPayload.current = null;
+    setExtractedInfo(null);
+    setError(null);
+    if (!next.length) return;
+    setExtracting(true);
+    try {
+      const extracted = await Promise.all(next.map((f) => extractPdfText(f)));
+      const { text, truncated } = combineAndCap(extracted);
+      setExtractedInfo({ chars: text.length, truncated });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to read PDF.");
+    } finally {
+      setExtracting(false);
+    }
+  }
 
   async function preparePayload(): Promise<PreparedPayload> {
     const extracted = await Promise.all(files.map((f) => extractPdfText(f)));
@@ -64,14 +87,17 @@ function Index() {
     setStatus("Preparing analysis…");
 
     try {
-      const { result, failedSections } = await streamAnalyze(
+      const useSummary = cachedSummary.current;
+      const { result, failedSections, summary } = await streamAnalyze(
         payload.caseName,
-        payload.transcript,
+        useSummary ? { summary: useSummary } : { transcript: payload.transcript },
         (p) => {
           setProgress({ step: p.step, total: p.total });
           setStatus(`${p.label} (${p.step}/${p.total})`);
         },
       );
+      // Cache the summary so retries skip the compression call.
+      if (summary) cachedSummary.current = summary;
       setStatus("Analysis complete.");
       const { result: normalized, missing } = normalizeResult(result);
       // Merge server-reported failed sections with shape-validation misses
@@ -126,6 +152,7 @@ function Index() {
     try {
       const payload = await preparePayload();
       lastPayload.current = payload;
+      cachedSummary.current = null; // fresh analysis = fresh summary
       await runAnalysis(payload);
     } catch (e) {
       console.error(e);
@@ -174,7 +201,27 @@ function Index() {
               />
             </label>
 
-            <UploadZone files={files} onFiles={setFiles} disabled={busy} />
+            <UploadZone files={files} onFiles={handleFilesChange} disabled={busy} />
+
+            {extracting && (
+              <p className="mt-3 text-xs text-muted-foreground">Reading PDF…</p>
+            )}
+            {extractedInfo && !extracting && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {extractedInfo.truncated ? (
+                  <>
+                    Transcript length: {extractedInfo.chars.toLocaleString()} characters — will be
+                    trimmed to {MAX_CHARS.toLocaleString()} for analysis. For full coverage, split
+                    into smaller uploads.
+                  </>
+                ) : (
+                  <>
+                    Transcript length: {extractedInfo.chars.toLocaleString()} characters — within
+                    analysis limits.
+                  </>
+                )}
+              </p>
+            )}
 
             {truncatedNotice && (
               <div className="mt-5 flex items-start gap-2 px-4 py-3 rounded-lg bg-warning/10 border border-warning/40 text-sm text-warning">

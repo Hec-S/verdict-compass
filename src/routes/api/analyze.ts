@@ -146,7 +146,6 @@ export const Route = createFileRoute("/api/analyze")({
           );
         }
 
-        const transcriptBlock = `Case label: ${parsedInput.caseName}\n\nTranscript(s):\n\n${parsedInput.transcript}`;
         const encoder = new TextEncoder();
 
         // NDJSON progress stream: one JSON object per line.
