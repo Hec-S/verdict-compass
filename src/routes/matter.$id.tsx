@@ -482,6 +482,15 @@ function MatterDetailPage() {
                   <Progress value={synthProgress} />
                 </div>
               )}
+              {!synthRunning && !synthError && latestSynthesis &&
+                latestSynthesis.status !== "complete" && latestSynthesis.status !== "error" && (
+                  <div className="mb-6 border border-border p-4">
+                    <p className="text-[13px] text-foreground mb-2">
+                      {latestSynthesis.progressMessage ?? "Preparing…"}
+                    </p>
+                    <Progress value={latestSynthesis.progress} />
+                  </div>
+                )}
               {synthError && !synthRunning && (
                 <div className="mb-6 border border-destructive/30 p-4">
                   <p className="text-[13px] text-destructive mb-3">{synthError}</p>
