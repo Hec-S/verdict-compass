@@ -1,6 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
+export const config = { runtime: "edge" };
+
+const TRANSCRIPT_CHAR_LIMIT = 60_000;
+
 const InputSchema = z.object({
   caseName: z.string().min(1).max(300),
   transcript: z.string().min(50).max(110_000).optional(),
@@ -130,18 +134,23 @@ export const Route = createFileRoute("/api/analyze")({
   server: {
     handlers: {
       POST: async ({ request }: { request: Request }) => {
+        console.log("Edge function started");
         const apiKey = process.env.ANTHROPIC_API_KEY;
         if (!apiKey) {
-          return new Response("ANTHROPIC_API_KEY is not configured.", { status: 500 });
+          return Response.json(
+            { error: true, message: "ANTHROPIC_API_KEY is not configured.", stage: "configuration" },
+            { status: 500 },
+          );
         }
 
         let parsedInput: z.infer<typeof InputSchema>;
         try {
           const body = await request.json();
+          console.log("Payload size received:", JSON.stringify(body).length, "characters");
           parsedInput = InputSchema.parse(body);
         } catch (e) {
-          return new Response(
-            e instanceof Error ? e.message : "Invalid request body",
+          return Response.json(
+            { error: true, message: e instanceof Error ? e.message : "Invalid request body", stage: "validation" },
             { status: 400 },
           );
         }
