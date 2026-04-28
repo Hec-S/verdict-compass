@@ -11,7 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ReportIdRouteImport } from './routes/report.$id'
-import { Route as ApiAnalyzeRouteImport } from './routes/api/analyze'
+import { Route as ApiAnalyzeSubmitRouteImport } from './routes/api/analyze.submit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,40 +23,40 @@ const ReportIdRoute = ReportIdRouteImport.update({
   path: '/report/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAnalyzeRoute = ApiAnalyzeRouteImport.update({
-  id: '/api/analyze',
-  path: '/api/analyze',
+const ApiAnalyzeSubmitRoute = ApiAnalyzeSubmitRouteImport.update({
+  id: '/api/analyze/submit',
+  path: '/api/analyze/submit',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api/analyze': typeof ApiAnalyzeRoute
   '/report/$id': typeof ReportIdRoute
+  '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/api/analyze': typeof ApiAnalyzeRoute
   '/report/$id': typeof ReportIdRoute
+  '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/api/analyze': typeof ApiAnalyzeRoute
   '/report/$id': typeof ReportIdRoute
+  '/api/analyze/submit': typeof ApiAnalyzeSubmitRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/analyze' | '/report/$id'
+  fullPaths: '/' | '/report/$id' | '/api/analyze/submit'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/analyze' | '/report/$id'
-  id: '__root__' | '/' | '/api/analyze' | '/report/$id'
+  to: '/' | '/report/$id' | '/api/analyze/submit'
+  id: '__root__' | '/' | '/report/$id' | '/api/analyze/submit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ApiAnalyzeRoute: typeof ApiAnalyzeRoute
   ReportIdRoute: typeof ReportIdRoute
+  ApiAnalyzeSubmitRoute: typeof ApiAnalyzeSubmitRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -75,11 +75,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/analyze': {
-      id: '/api/analyze'
-      path: '/api/analyze'
-      fullPath: '/api/analyze'
-      preLoaderRoute: typeof ApiAnalyzeRouteImport
+    '/api/analyze/submit': {
+      id: '/api/analyze/submit'
+      path: '/api/analyze/submit'
+      fullPath: '/api/analyze/submit'
+      preLoaderRoute: typeof ApiAnalyzeSubmitRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -87,9 +87,18 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ApiAnalyzeRoute: ApiAnalyzeRoute,
   ReportIdRoute: ReportIdRoute,
+  ApiAnalyzeSubmitRoute: ApiAnalyzeSubmitRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
