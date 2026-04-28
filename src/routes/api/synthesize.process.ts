@@ -7,9 +7,13 @@ import type {
   CaseSynthesis,
   AnalysisResult,
   CaseSnapshot,
+  FailedSection,
 } from "@/lib/analysis-types";
 
-const InputSchema = z.object({ synthesisId: z.string().uuid() });
+const InputSchema = z.object({
+  synthesisId: z.string().uuid(),
+  retrySections: z.array(z.string()).optional(),
+});
 
 function getEnv(key: string): string | undefined {
   const g = globalThis as unknown as {
