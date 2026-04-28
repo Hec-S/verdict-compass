@@ -6,7 +6,7 @@ if (typeof window !== "undefined") {
   pdfjs.GlobalWorkerOptions.workerPort = new PdfWorker();
 }
 
-export const MAX_CHARS = 100_000;
+export const MAX_CHARS = 80_000;
 
 export interface ExtractedPdf {
   name: string;
@@ -35,36 +35,27 @@ export async function extractPdfText(file: File): Promise<ExtractedPdf> {
 }
 
 /**
- * Strip court-reporter formatting noise to shrink payload:
- * - Line numbers (1-2 digits at start of a line, common transcript format)
- * - Reporter certificate / certification pages at the end
- * - Repeated whitespace and blank lines
+ * Aggressively strip court-reporter formatting noise to shrink payload.
  */
 export function cleanTranscript(raw: string): string {
-  let s = raw;
-
-  // Cut reporter certificate sections (everything from common cert markers onward)
-  const certPatterns = [
-    /\n[^\n]*reporter['\u2019]?s\s+certificate[\s\S]*$/i,
-    /\nCERTIFICATE\s+OF\s+(?:REPORTER|OFFICIAL\s+REPORTER)[\s\S]*$/i,
-    /\nI,\s+[^,]+,\s+(?:Certified\s+Shorthand|Official\s+Court)\s+Reporter[\s\S]*$/i,
-  ];
-  for (const re of certPatterns) s = s.replace(re, "");
-
-  // Strip leading line numbers like " 1 ", "12 ", "  3  " at start of lines
-  s = s.replace(/^[ \t]*\d{1,2}[ \t]+/gm, "");
-
-  // Collapse multiple whitespace characters within lines
-  s = s.replace(/[ \t]+/g, " ");
-
-  // Remove blank lines (and trim)
-  s = s
+  return raw
     .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
-    .join("\n");
-
-  return s.trim();
+    .map((line) => line.trim())
+    // Remove pure line-number lines (1-4 digit standalone numbers)
+    .filter((line) => !/^\d{1,4}$/.test(line))
+    // Remove court reporter certificate boilerplate
+    .filter(
+      (line) =>
+        !line.match(
+          /shantel|zambrano|CSR No|reporter'?s certificate|expiration date|official court reporter/i,
+        ),
+    )
+    // Remove blank lines
+    .filter((line) => line.length > 0)
+    .join(" ")
+    // Collapse multiple spaces
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function combineAndCap(parts: ExtractedPdf[]): { text: string; truncated: boolean } {
