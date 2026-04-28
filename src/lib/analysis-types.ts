@@ -67,4 +67,5 @@ export interface StoredCase {
   createdAt: number;
   truncated: boolean;
   result: AnalysisResult;
+  missingSections?: string[];
 }

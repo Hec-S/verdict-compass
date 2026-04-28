@@ -4,9 +4,9 @@ import { Loader2, Sparkles, ShieldCheck, Zap, AlertTriangle, RotateCcw } from "l
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { UploadZone } from "@/components/verdict/UploadZone";
 import { extractPdfText, combineAndCap, MAX_CHARS } from "@/lib/pdf-extract";
-import { streamAnalyze, TimeoutError } from "@/lib/analyze-client";
+import { streamAnalyze, TimeoutError, MalformedJsonError } from "@/lib/analyze-client";
 import { saveCase } from "@/lib/case-store";
-import type { AnalysisResult } from "@/lib/analysis-types";
+import { normalizeResult } from "@/lib/normalize-result";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -43,6 +43,8 @@ function Index() {
   const [streamedChars, setStreamedChars] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
+  const [parseFailed, setParseFailed] = useState(false);
+  const [parseFailCount, setParseFailCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [truncatedNotice, setTruncatedNotice] = useState<string | null>(null);
   const lastPayload = useRef<PreparedPayload | null>(null);
@@ -63,6 +65,7 @@ function Index() {
   async function runAnalysis(payload: PreparedPayload) {
     setError(null);
     setTimedOut(false);
+    setParseFailed(false);
     setBusy(true);
     setStreamedChars(0);
 
@@ -79,14 +82,17 @@ function Index() {
         payload.transcript,
         (chars) => setStreamedChars(chars),
       );
+      const { result: normalized, missing } = normalizeResult(result);
       const id = crypto.randomUUID();
       saveCase({
         id,
         caseName: payload.caseName,
         createdAt: Date.now(),
         truncated: payload.truncated,
-        result: result as unknown as AnalysisResult,
+        result: normalized,
+        missingSections: missing,
       });
+      setParseFailCount(0);
       navigate({ to: "/report/$id", params: { id } });
     } catch (e) {
       console.error(e);
@@ -94,6 +100,12 @@ function Index() {
         setTimedOut(true);
         setError(
           "Analysis timed out — the transcript may be too long. You can retry or try uploading fewer pages.",
+        );
+      } else if (e instanceof MalformedJsonError) {
+        setParseFailed(true);
+        setParseFailCount((c) => c + 1);
+        setError(
+          "Analysis could not be parsed. This is usually a formatting issue — please retry.",
         );
       } else {
         setError(e instanceof Error ? e.message : "Something went wrong.");
@@ -108,6 +120,7 @@ function Index() {
   async function handleAnalyze() {
     setError(null);
     setTimedOut(false);
+    setParseFailed(false);
     if (!caseName.trim()) {
       setError("Please enter a case name.");
       return;
@@ -181,11 +194,18 @@ function Index() {
             {error && (
               <div className="mt-5 flex items-start gap-2 px-4 py-3 rounded-lg bg-destructive/10 border border-destructive/40 text-sm text-destructive">
                 <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>{error}</span>
+                <div className="flex-1">
+                  <p>{error}</p>
+                  {parseFailed && parseFailCount >= 2 && (
+                    <p className="mt-1 text-xs opacity-80">
+                      If this keeps failing, try uploading fewer pages at once.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
-            {timedOut && lastPayload.current && !busy && (
+            {(timedOut || parseFailed) && lastPayload.current && !busy && (
               <button
                 onClick={handleRetry}
                 className="mt-3 w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-gold/40 bg-gold/10 text-gold font-semibold text-sm hover:bg-gold/20 transition"
