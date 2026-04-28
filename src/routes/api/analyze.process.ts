@@ -91,9 +91,21 @@ const SECTIONS: SectionSpec[] = [
     key: "findings",
     label: "Evaluating wins and losses… (3/5)",
     progress: 50,
-    instructions: `"wentWell" = moments, tactics, evidence, or rulings that benefited the DEFENSE (e.g. successful impeachment of plaintiff's witnesses, favorable rulings, helpful admissions extracted on cross, defense verdicts).
-"wentPoorly" = moments, tactics, omissions, or rulings that HURT THE DEFENSE (e.g. damaging admissions by defense witnesses, sustained objections against the defense, missed cross-examination opportunities).
-The "fix" field in wentPoorly is direct advice to defense counsel on what should have been done differently or how to address it on appeal/retrial. Address it to the defense in second person ("You should have…", "On retrial, push harder on…").`,
+    instructions: `You are reviewing a litigation transcript summary for DEFENSE COUNSEL. Identify specific moments, tactics, evidence, rulings, and strategic decisions that affected the defense's position — both positively and negatively.
+
+YOU MUST ALWAYS RETURN AT LEAST 3 ITEMS in wentWell AND AT LEAST 3 ITEMS in wentPoorly. Empty arrays are not acceptable.
+
+If the defense WON the case, wentWell items are the specific reasons they won (good cross-examination, effective impeachment, favorable rulings, helpful admissions). wentPoorly items are areas where the defense could STILL have done better — missed opportunities, weak moments that almost hurt them, issues that nearly went the other way.
+
+If the defense LOST the case, wentPoorly items are the specific reasons they lost. wentWell items are things the defense did well despite losing — strong moments, well-handled witnesses, preserved appellate issues.
+
+Even in a clean defense win, there are always moments that could have been handled better — find them. Even in a defense loss, there are always things the defense did well — find them.
+
+The "fix" field in wentPoorly is direct second-person advice to defense counsel ("On retrial, push harder on…", "You should have…").
+
+Categories for wentWell: Cross-Examination | Impeachment | Evidence | Witness Testimony | Objection | Jury Charge | Strategy.
+Categories for wentPoorly: Cross-Examination | Witness Preparation | Evidence | Objection | Strategy | Damages.
+Title max 8 words. Detail 2-3 sentences with specific quotes or facts. Cite the page/volume reference.`,
     schema: `{
   "wentWell": [ { "category": "", "title": "", "detail": "", "cite": "" } ],
   "wentPoorly": [ { "category": "", "title": "", "detail": "", "cite": "", "fix": "" } ]
