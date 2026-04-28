@@ -8,6 +8,7 @@ export interface JobProgress {
 export interface JobResult {
   result: Record<string, unknown>;
   failedSections: string[];
+  caseId: string | null;
 }
 
 export class AnalysisFailedError extends Error {
@@ -91,11 +92,17 @@ export async function runAnalysis(
 
       if (data.status === "complete") {
         window.clearInterval(interval);
+        const fullResult = (data.result as Record<string, unknown>) ?? {};
+        const caseId =
+          typeof fullResult.__caseId === "string" ? (fullResult.__caseId as string) : null;
+        // Strip the helper field before handing back to the UI/normalizer.
+        if ("__caseId" in fullResult) delete fullResult.__caseId;
         resolve({
-          result: (data.result as Record<string, unknown>) ?? {},
+          result: fullResult,
           failedSections: Array.isArray(data.failed_sections)
             ? (data.failed_sections as string[])
             : [],
+          caseId,
         });
       } else if (data.status === "error") {
         window.clearInterval(interval);
