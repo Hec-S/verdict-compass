@@ -693,16 +693,44 @@ export async function runSynthesis(synthesisId: string) {
     await updateSynthesis(supabase, synthesisId, {
       progress: 85,
       progress_message: "Running case-level synthesis",
+      failed_sections: [],
     });
-    const result = await synthesizeMatter(apiKey, matter as MatterRow, cards);
+    const { result, failedSections, successCount } = await synthesizeMatter(
+      apiKey,
+      matter as MatterRow,
+      cards,
+      async ({ progress, message }) => {
+        await updateSynthesis(supabase!, synthesisId, {
+          progress,
+          progress_message: message,
+        });
+      },
+    );
+
+    let finalStatus: "complete" | "complete_with_errors" | "error";
+    let finalMessage: string;
+    if (successCount === 0) {
+      finalStatus = "error";
+      finalMessage = "Synthesis failed: every section call failed.";
+    } else if (failedSections.length > 0) {
+      finalStatus = "complete_with_errors";
+      finalMessage = `Synthesis complete with errors (${failedSections.length} section${failedSections.length === 1 ? "" : "s"} failed).`;
+    } else {
+      finalStatus = "complete";
+      finalMessage = "Synthesis complete.";
+    }
 
     await updateSynthesis(supabase, synthesisId, {
-      status: "complete",
+      status: finalStatus,
       progress: 100,
-      progress_message: "Synthesis complete.",
+      progress_message: finalMessage,
       result,
+      failed_sections: failedSections,
+      error: finalStatus === "error" ? finalMessage : null,
     });
-    console.log(`[synthesize.process] ${synthesisId} complete`);
+    console.log(
+      `[synthesize.process] ${synthesisId} ${finalStatus} (${successCount}/6 sub-calls succeeded)`,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[synthesize.process] ${synthesisId} fatal:`, message);
