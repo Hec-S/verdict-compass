@@ -134,7 +134,12 @@ function MatterDetailPage() {
 
   useEffect(() => {
     if (!latestSynthesis) return;
-    if (latestSynthesis.status === "complete" || latestSynthesis.status === "error") return;
+    if (
+      latestSynthesis.status === "complete" ||
+      latestSynthesis.status === "complete_with_errors" ||
+      latestSynthesis.status === "error"
+    )
+      return;
     let cancelled = false;
     const interval = setInterval(async () => {
       try {
@@ -483,7 +488,9 @@ function MatterDetailPage() {
                 </div>
               )}
               {!synthRunning && !synthError && latestSynthesis &&
-                latestSynthesis.status !== "complete" && latestSynthesis.status !== "error" && (
+                latestSynthesis.status !== "complete" &&
+                latestSynthesis.status !== "complete_with_errors" &&
+                latestSynthesis.status !== "error" && (
                   <div className="mb-6 border border-border p-4">
                     <p className="text-[13px] text-foreground mb-2">
                       {latestSynthesis.progressMessage ?? "Preparing…"}
