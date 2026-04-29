@@ -1733,38 +1733,56 @@ function DiscoveryGapsTab({
       </TabContainer>
     );
   }
+  const ids = data.map((_, i) => `gap-${i}`);
+  const collapse = useCollapsibleSet(ids);
   return (
     <TabContainer>
       <TabSectionHeader title="Discovery gaps" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No gaps identified.</p>
       ) : (
-        <div className="space-y-3">
-          {data.map((g, i) => (
-            <article key={i} className="border border-border p-5 print:break-inside-avoid">
-              <div className="flex items-start gap-3 mb-3 flex-wrap">
-                <h3 className="flex-1 text-[16px] font-medium text-foreground">
-                  {safeText(g.gap)}
-                </h3>
-                <Badge tone={PRIORITY_TONE[g.priority] ?? PRIORITY_TONE.medium}>
-                  {g.priority}
-                </Badge>
-              </div>
-              {g.impact && (
-                <p className="text-[15px] text-foreground/90 leading-relaxed">
-                  <span className="text-muted-foreground">Impact: </span>
-                  {safeText(g.impact)}
-                </p>
-              )}
-              {g.recommendedAction && (
-                <p className="text-[15px] text-foreground/90 leading-relaxed mt-2">
-                  <span className="text-muted-foreground">Action: </span>
-                  {safeText(g.recommendedAction)}
-                </p>
-              )}
-            </article>
-          ))}
-        </div>
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {data.map((g, i) => {
+              const id = ids[i];
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <>
+                      <h3 className="flex-1 min-w-0 text-[16px] font-medium text-foreground">
+                        {safeText(g.gap)}
+                      </h3>
+                      <Badge tone={PRIORITY_TONE[g.priority] ?? PRIORITY_TONE.medium}>
+                        {g.priority}
+                      </Badge>
+                    </>
+                  }
+                >
+                  {g.impact && (
+                    <p className="text-[15px] text-foreground/90 leading-relaxed mt-2">
+                      <span className="text-muted-foreground">Impact: </span>
+                      {safeText(g.impact)}
+                    </p>
+                  )}
+                  {g.recommendedAction && (
+                    <p className="text-[15px] text-foreground/90 leading-relaxed mt-2">
+                      <span className="text-muted-foreground">Action: </span>
+                      {safeText(g.recommendedAction)}
+                    </p>
+                  )}
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
