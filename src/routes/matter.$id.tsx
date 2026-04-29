@@ -708,9 +708,9 @@ function SynthesisStatusBanner({
 
   if (latestSynthesis.status === "complete") {
     return (
-      <div className="mb-6 border border-emerald-500/40 bg-emerald-500/5 p-4 flex items-start gap-3 flex-wrap">
-        <div className="flex-1 min-w-0">
-          <p className="text-[13px] text-foreground font-medium">
+      <div className="mb-6 border border-emerald-500/40 bg-emerald-500/5 p-4 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-start">
+        <div className="min-w-0">
+          <p className="text-[13px] text-foreground font-medium break-words">
             Synthesis complete.
           </p>
           <p className="text-[12px] text-muted-foreground">
@@ -721,7 +721,7 @@ function SynthesisStatusBanner({
           type="button"
           onClick={onRerunAll}
           disabled={retryingSynthesis}
-          className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50"
+          className="inline-flex items-center h-8 px-3 text-[13px] text-foreground border border-foreground/80 hover:bg-foreground/[0.05] transition-colors disabled:opacity-50 shrink-0 justify-self-start sm:justify-self-end"
         >
           Re-run
         </button>
