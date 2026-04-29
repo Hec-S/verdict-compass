@@ -796,8 +796,8 @@ function SynthesisStatusBanner({
 
   // status === "error"
   return (
-    <div className="mb-6 border border-destructive/40 bg-destructive/5 p-4 flex items-start gap-3 flex-wrap">
-      <div className="flex-1 min-w-0">
+    <div className="mb-6 border border-destructive/40 bg-destructive/5 p-4 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-start">
+      <div className="min-w-0">
         <p className="text-[13px] text-destructive font-medium">
           Synthesis failed.
         </p>
