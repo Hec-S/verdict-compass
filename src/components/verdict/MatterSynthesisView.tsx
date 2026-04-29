@@ -805,10 +805,10 @@ function WitnessesTab({
 
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Witness threat ranking" />
         <UnavailableInline subCallKey="witnessThreats" onRerunFailed={onRerunFailed} block />
-      </>
+      </TabContainer>
     );
   }
 
@@ -824,7 +824,7 @@ function WitnessesTab({
   ];
 
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Witness threat ranking" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No witnesses ranked.</p>
@@ -856,9 +856,7 @@ function WitnessesTab({
                 <article
                   key={`${w.caseId}-${i}`}
                   className={`border p-5 print:break-inside-avoid ${
-                    top
-                      ? "border-foreground/40 bg-foreground/[0.02]"
-                      : "border-border"
+                    top ? "border-foreground/50" : "border-border"
                   }`}
                 >
                   <div className="flex items-start gap-5">
@@ -923,7 +921,7 @@ function WitnessesTab({
           </div>
         </>
       )}
-    </>
+    </TabContainer>
   );
 }
 
