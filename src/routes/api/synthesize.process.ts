@@ -23,6 +23,111 @@ function getEnv(key: string): string | undefined {
   return g.process?.env?.[key] ?? g.Deno?.env?.get?.(key);
 }
 
+// ---------------- Rate limiting & 429 retry ----------------
+//
+// Anthropic enforces an input-tokens-per-minute (ITPM) ceiling. Stage B fires
+// 7 sub-calls back-to-back, each carrying the full deposition card list, and
+// can blow through 30k ITPM in well under a minute. We track recent input
+// token usage in a sliding 60s window and sleep before any sub-call that
+// would push us over the safe ceiling. We also auto-retry 429 responses with
+// the duration the server suggests via retry-after.
+
+const ITPM_LIMIT = 28_000; // 2K buffer below Anthropic's 30K/min
+const RATE_WINDOW_MS = 60_000;
+
+interface TokenUsageEntry {
+  ts: number;
+  tokens: number;
+}
+const tokenUsageWindow: TokenUsageEntry[] = [];
+
+function approxTokenCount(s: string): number {
+  // Rough approximation that's close enough for Claude (~4 chars/token).
+  return Math.ceil(s.length / 4);
+}
+
+function pruneRateWindow(now: number) {
+  while (
+    tokenUsageWindow.length > 0 &&
+    now - tokenUsageWindow[0].ts > RATE_WINDOW_MS
+  ) {
+    tokenUsageWindow.shift();
+  }
+}
+
+function tokensInWindow(now: number): number {
+  pruneRateWindow(now);
+  return tokenUsageWindow.reduce((acc, e) => acc + e.tokens, 0);
+}
+
+async function awaitRateLimitCapacity(label: string, plannedTokens: number) {
+  // Plan for the worst — if this single call alone exceeds the limit we still
+  // have to issue it. Wait until *prior* usage drains enough to leave room.
+  const target = Math.min(plannedTokens, ITPM_LIMIT);
+  // Loop because the head of the queue may be far in the past; one prune may
+  // not be enough if multiple older entries remain.
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const now = Date.now();
+    const used = tokensInWindow(now);
+    if (used + target <= ITPM_LIMIT) return;
+    // Sleep until the oldest entry falls out of the window.
+    const oldest = tokenUsageWindow[0];
+    if (!oldest) return;
+    const waitMs = Math.max(250, RATE_WINDOW_MS - (now - oldest.ts) + 50);
+    console.log(
+      `[rate-limit] ${label}: ${used} tokens used in window, planned=${plannedTokens}, sleeping ${waitMs}ms`,
+    );
+    await sleep(waitMs);
+  }
+}
+
+function recordTokenUsage(tokens: number) {
+  tokenUsageWindow.push({ ts: Date.now(), tokens });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Wraps callClaude with: ITPM-aware pre-throttle and exponential-backoff
+ *  retry on 429. Up to 2 retries (3 attempts total). */
+async function callClaudeThrottled(
+  apiKey: string,
+  system: string,
+  user: string,
+  maxTokens: number,
+  label: string,
+): Promise<string> {
+  const inputTokens = approxTokenCount(system) + approxTokenCount(user);
+  await awaitRateLimitCapacity(label, inputTokens);
+
+  const maxAttempts = 3;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      recordTokenUsage(inputTokens);
+      return await callClaude(apiKey, system, user, maxTokens);
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const is429 = /\b429\b|rate_limit|rate limit/i.test(msg);
+      if (!is429 || attempt === maxAttempts) throw err;
+      // Try to extract a retry-after seconds value from the error body.
+      const m = msg.match(/retry[-_ ]?after[^0-9]{0,8}(\d+)/i);
+      const retryAfterSec = m ? parseInt(m[1], 10) : 30;
+      const waitMs = Math.max(1000, retryAfterSec * 1000);
+      console.warn(
+        `[${label}] rate limited, retrying in ${retryAfterSec}s (attempt ${attempt} of ${maxAttempts})`,
+      );
+      await sleep(waitMs);
+      // After waiting, re-check our local window too.
+      await awaitRateLimitCapacity(label, inputTokens);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 interface CaseRow {
   id: string;
   case_name: string;
@@ -319,6 +424,98 @@ DEPOSITION CARDS (${cards.length} witnesses):
 ${JSON.stringify(cards, null, 2)}`;
 }
 
+// ---------------- Per-section card trimming ----------------
+//
+// Each Stage B sub-call only needs a subset of the DepositionCard fields.
+// Sending the full card to every sub-call inflates input tokens by 40-60%
+// and is the main driver of our 429s on the admissions/contradictions calls.
+// trimCardForSection returns a minimal projection per section.
+
+type SectionKey =
+  | "strategicOverview"
+  | "witnessThreats"
+  | "contradictions"
+  | "admissionsInventory"
+  | "causationMethodology"
+  | "motionsDiscovery"
+  | "retrospective"
+  | "trialThemes";
+
+function trimCardForSection(
+  card: DepositionCard,
+  section: SectionKey,
+): Partial<DepositionCard> & { caseId: string; deponentName: string } {
+  const base = { caseId: card.caseId, deponentName: card.deponentName };
+  switch (section) {
+    case "strategicOverview":
+    case "witnessThreats":
+      // Headline analyses get the full card.
+      return card;
+    case "contradictions":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        keyAdmissions: card.keyAdmissions,
+        contradictionsWithOtherWitnesses: card.contradictionsWithOtherWitnesses,
+        priorConditionsDisclosed: card.priorConditionsDisclosed,
+      };
+    case "admissionsInventory":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        keyAdmissions: card.keyAdmissions,
+        priorConditionsDisclosed: card.priorConditionsDisclosed,
+        vulnerabilities: card.vulnerabilities,
+      };
+    case "causationMethodology":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        priorConditionsDisclosed: card.priorConditionsDisclosed,
+        contradictionsWithOtherWitnesses: card.contradictionsWithOtherWitnesses,
+        methodologyIssues: card.methodologyIssues,
+        biasIndicators: card.biasIndicators,
+        vulnerabilities: card.vulnerabilities,
+      };
+    case "motionsDiscovery":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        methodologyIssues: card.methodologyIssues,
+        biasIndicators: card.biasIndicators,
+        vulnerabilities: card.vulnerabilities,
+        keyAdmissions: card.keyAdmissions,
+        unresolvedQuestions: card.unresolvedQuestions,
+      };
+    case "retrospective":
+      return {
+        ...base,
+        vulnerabilities: card.vulnerabilities,
+        unresolvedQuestions: card.unresolvedQuestions,
+      };
+    case "trialThemes":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        keyAdmissions: card.keyAdmissions,
+        biasIndicators: card.biasIndicators,
+      };
+  }
+}
+
+function buildSectionInput(
+  matter: MatterRow,
+  cards: DepositionCard[],
+  section: SectionKey,
+): string {
+  const trimmed = cards.map((c) => trimCardForSection(c, section));
+  return `MATTER: ${matter.name}
+DESCRIPTION: ${matter.description ?? ""}
+
+DEPOSITION CARDS (${cards.length} witnesses):
+${JSON.stringify(trimmed, null, 2)}`;
+}
+
 async function runSubSynthesis(
   apiKey: string,
   label: string,
@@ -326,7 +523,13 @@ async function runSubSynthesis(
   maxTokens: number,
 ): Promise<Record<string, unknown>> {
   const t = Date.now();
-  const raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, maxTokens);
+  const raw = await callClaudeThrottled(
+    apiKey,
+    CASE_SYNTHESIS_SYSTEM,
+    userMessage,
+    maxTokens,
+    label,
+  );
   console.log(
     `[synthesize.process] sub:${label} ok in ${Date.now() - t}ms (${raw.length} chars)`,
   );
@@ -346,7 +549,7 @@ export async function synthesizeStrategicOverview(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "strategicOverview");
   const userMessage = `Produce the STRATEGIC OVERVIEW slice of the case-level defense synthesis.
 
 ${shared}
@@ -384,7 +587,7 @@ export async function synthesizeWitnessThreats(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "witnessThreats");
   const userMessage = `Produce the WITNESS THREAT RANKING slice of the case-level defense synthesis.
 
 ${shared}
@@ -407,28 +610,44 @@ export async function synthesizeContradictions(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "contradictions");
   const userMessage = `From the deposition cards below, identify every meaningful contradiction across witnesses where two or more witnesses gave incompatible testimony on the same factual point. Return ONLY this JSON shape with no other content:
 
 {
   "contradictionMatrix": [
     {
-      "topic": "short topic label, max 8 words",
+      "topic": "short topic label, max 6 words",
       "witnesses": [
-        {"caseId": "<id>", "deponentName": "<name>", "position": "<what they said, max 30 words>", "cite": "<page/line cite>"}
+        {"caseId": "<id>", "deponentName": "<name>", "position": "<what they said, max 25 words>", "cite": "<page/line cite>"}
       ],
       "exploitability": "high|medium|low",
-      "defenseUse": "how defense uses this contradiction at trial, max 40 words"
+      "defenseUse": "how defense uses this contradiction at trial, max 30 words"
     }
   ]
 }
 
 Rules:
-- Return at most 8 contradictions, prioritized by exploitability
-- Each contradiction must have at least 2 witnesses
-- Each position must be 30 words or less
-- Each defenseUse must be 40 words or less
+- Return at most 6 contradictions, prioritized by exploitability.
+- Each contradiction must have at least 2 witnesses.
+- topic: 6 words max. position: 25 words max. defenseUse: 30 words max.
 - If you cannot find any meaningful contradictions, return an empty array. Do not invent contradictions to fill the array.
+
+Example of correct output format:
+{
+  "contradictionMatrix": [
+    {
+      "topic": "Phone use at impact",
+      "witnesses": [
+        {"caseId": "abc-123", "deponentName": "Plaintiff", "position": "defendant was on phone immediately before collision", "cite": "p.18 lines 3-7"},
+        {"caseId": "def-456", "deponentName": "Defendant", "position": "checked phone after impact to note time", "cite": "p.32 lines 11-15"}
+      ],
+      "exploitability": "medium",
+      "defenseUse": "impeach plaintiff's claim defendant was distracted before collision"
+    }
+  ]
+}
+
+Your response must end with the closing brace } of the contradictionMatrix wrapper. Verify the JSON is complete and valid before responding. If you cannot fit all desired contradictions within the response length, return fewer contradictions rather than truncated JSON.
 
 ${shared}`;
 
@@ -438,7 +657,13 @@ ${shared}`;
   const t = Date.now();
   let raw: string;
   try {
-    raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, 3000);
+    raw = await callClaudeThrottled(
+      apiKey,
+      CASE_SYNTHESIS_SYSTEM,
+      userMessage,
+      3000,
+      "contradictions",
+    );
   } catch (err) {
     console.error(
       `[CONTRADICTIONS] Claude call failed:`,
@@ -468,7 +693,7 @@ export async function synthesizeAdmissionsInventory(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "admissionsInventory");
   const userMessage = `From the deposition cards below, build a topic-grouped inventory of admissions that defense can use at trial. Group admissions by topic, not by witness. Topics with multi-witness support are highest priority. Return ONLY this JSON shape with no other content:
 
 {
@@ -498,7 +723,13 @@ ${shared}`;
   const t = Date.now();
   let raw: string;
   try {
-    raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, 3000);
+    raw = await callClaudeThrottled(
+      apiKey,
+      CASE_SYNTHESIS_SYSTEM,
+      userMessage,
+      3000,
+      "admissionsInventory",
+    );
   } catch (err) {
     console.error(
       `[ADMISSIONS] Claude call failed:`,
@@ -528,7 +759,7 @@ export async function synthesizeCausationAndMethodology(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "causationMethodology");
   const userMessage = `Produce the CAUSATION AND METHODOLOGY slice of the case-level defense synthesis.
 
 ${shared}
@@ -558,7 +789,7 @@ export async function synthesizeMotionsAndDiscovery(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "motionsDiscovery");
   const userMessage = `Produce the MOTIONS AND DISCOVERY slice of the case-level defense synthesis.
 
 ${shared}
@@ -585,7 +816,7 @@ export async function synthesizeRetrospective(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "retrospective");
   const userMessage = `Produce the RETROSPECTIVE slice of the case-level defense synthesis.
 
 ${shared}
@@ -1058,7 +1289,17 @@ export async function runSynthesisRetrySections(
       })
       .filter((f) => f.section);
     const remainingPrior = priorNormalized.filter(
-      (f) => !attemptedKeys.includes(f.section) && !succeededKeys.includes(f.section),
+      (f) => {
+        // Drop legacy section keys that no longer exist in SUB_CALLS — they
+        // are dead entries from prior pipeline versions and should never be
+        // resurfaced (e.g. the old combined "contradictionsAdmissions").
+        if (!SUB_CALLS.some((s) => s.key === f.section)) return false;
+        // Drop entries we just retried (whether they succeeded or failed
+        // again — failures are re-added below from newFailures).
+        if (attemptedKeys.includes(f.section)) return false;
+        if (succeededKeys.includes(f.section)) return false;
+        return true;
+      },
     );
     const updatedFailures: FailedSection[] = [...remainingPrior, ...newFailures];
 
