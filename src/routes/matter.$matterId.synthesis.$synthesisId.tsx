@@ -1,8 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
+import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
-import { MatterSynthesisView } from "@/components/verdict/MatterSynthesisView";
+import {
+  MatterSynthesisView,
+  type SynthesisTabId,
+} from "@/components/verdict/MatterSynthesisView";
 import { ErrorBoundary } from "@/components/verdict/ErrorBoundary";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -32,6 +37,27 @@ export const Route = createFileRoute(
   head: () => ({
     meta: [{ title: "Matter Synthesis — VerdictIQ" }],
   }),
+  validateSearch: zodValidator(
+    z.object({
+      tab: fallback(
+        z.enum([
+          "overview",
+          "witnesses",
+          "causation",
+          "motions",
+          "methodology",
+          "contradictions",
+          "admissions",
+          "bias",
+          "themes",
+          "discovery",
+          "missed",
+          "next",
+        ]),
+        "overview",
+      ).default("overview"),
+    }),
+  ),
   component: MatterSynthesisPage,
 });
 
@@ -39,6 +65,7 @@ const SYNTHESIS_START_TIMEOUT_MS = 60 * 1000;
 
 function MatterSynthesisPage() {
   const { matterId, synthesisId } = Route.useParams();
+  const { tab } = Route.useSearch();
   const navigate = useNavigate();
   const [synth, setSynth] = useState<MatterSynthesisRow | null>(null);
   const [cases, setCases] = useState<CaseListRow[]>([]);
@@ -224,6 +251,15 @@ function MatterSynthesisPage() {
                     matterName={matterName || "Matter Synthesis"}
                     statusLabel={synth.status}
                     lastRunAt={synth.createdAt}
+                    activeTab={tab as SynthesisTabId}
+                    onTabChange={(t) =>
+                      navigate({
+                        to: "/matter/$matterId/synthesis/$synthesisId",
+                        params: { matterId, synthesisId },
+                        search: { tab: t },
+                        replace: true,
+                      })
+                    }
                   />
                 </ErrorBoundary>
                 </>
