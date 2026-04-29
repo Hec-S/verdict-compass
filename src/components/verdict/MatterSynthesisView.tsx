@@ -223,12 +223,10 @@ function UnavailableInline({
 
 function TabSectionHeader({ title, count }: { title: string; count?: number }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 mb-6 pb-3 border-b border-border">
-      <h2 className="text-[22px] font-semibold tracking-[-0.01em] text-foreground">
-        {title}
-      </h2>
+    <div className="flex items-baseline justify-between gap-4 mb-6">
+      <SectionLabel>{title}</SectionLabel>
       {typeof count === "number" && (
-        <span className="text-[13px] text-muted-foreground tabular-nums">
+        <span className="text-[12px] text-muted-foreground tabular-nums">
           {count} {count === 1 ? "item" : "items"}
         </span>
       )}
