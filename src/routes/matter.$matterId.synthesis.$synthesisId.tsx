@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { MatterSynthesisView } from "@/components/verdict/MatterSynthesisView";
+import { ErrorBoundary } from "@/components/verdict/ErrorBoundary";
 import { Progress } from "@/components/ui/progress";
 import {
   deleteSynthesisFromDb,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/synthesis-db";
 import { getMatterFromDb } from "@/lib/matters-db";
 import type { MatterSynthesisRow } from "@/lib/analysis-types";
+import { SYNTHESIS_SUB_CALLS } from "@/lib/analysis-types";
 import type { CaseListRow } from "@/lib/cases-db";
 import {
   AlertDialog,
@@ -34,6 +36,10 @@ export const Route = createFileRoute(
 });
 
 const SYNTHESIS_START_TIMEOUT_MS = 60 * 1000;
+
+function sectionLabel(key: string): string {
+  return SYNTHESIS_SUB_CALLS[key as keyof typeof SYNTHESIS_SUB_CALLS]?.label ?? key;
+}
 
 function MatterSynthesisPage() {
   const { matterId, synthesisId } = Route.useParams();
@@ -205,18 +211,23 @@ function MatterSynthesisPage() {
                         <p className="text-[13px] text-foreground">
                           Some synthesis sections could not be generated:{" "}
                           <span className="font-medium">
-                            {synth.failedSections.join(", ")}
+                            {synth.failedSections
+                              .map((f) => sectionLabel(f.section))
+                              .join(", ")}
                           </span>
                           . The rest of the synthesis is available below.
                         </p>
                       </div>
                     )}
-                <MatterSynthesisView
-                  synthesis={synth.result}
-                  caseLabels={caseLabels}
-                  onRerun={handleRerun}
-                  rerunDisabled={rerunning}
-                />
+                <ErrorBoundary label="the synthesis report">
+                  <MatterSynthesisView
+                    synthesis={synth.result}
+                    caseLabels={caseLabels}
+                    failedSubCallKeys={synth.failedSections.map((f) => f.section)}
+                    onRerun={handleRerun}
+                    rerunDisabled={rerunning}
+                  />
+                </ErrorBoundary>
                 </>
               )}
             </>

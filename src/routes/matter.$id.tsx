@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import { CaseRowList } from "@/components/verdict/CaseRow";
 import { MatterSynthesisView } from "@/components/verdict/MatterSynthesisView";
+import { ErrorBoundary } from "@/components/verdict/ErrorBoundary";
 import {
   getMatterFromDb,
   updateMatterInDb,
@@ -498,16 +499,18 @@ function MatterDetailPage() {
                 </button>
               </div>
 
-              <SynthesisStatusBanner
-                synthRunning={synthRunning}
-                synthProgress={synthProgress}
-                synthMessage={synthMessage}
-                latestSynthesis={latestSynthesis}
-                retryingSynthesis={retryingSynthesis}
-                onRetry={() => setConfirmRetry(true)}
-                onRerunFailed={() => void rerunFailedSubCalls()}
-                onRerunAll={() => setConfirmRetry(true)}
-              />
+              <ErrorBoundary label="the synthesis status banner">
+                <SynthesisStatusBanner
+                  synthRunning={synthRunning}
+                  synthProgress={synthProgress}
+                  synthMessage={synthMessage}
+                  latestSynthesis={latestSynthesis}
+                  retryingSynthesis={retryingSynthesis}
+                  onRetry={() => setConfirmRetry(true)}
+                  onRerunFailed={() => void rerunFailedSubCalls()}
+                  onRerunAll={() => setConfirmRetry(true)}
+                />
+              </ErrorBoundary>
 
               {/* Cases list */}
               <CaseRowList
@@ -537,23 +540,25 @@ function MatterDetailPage() {
                         Open full report ›
                       </Link>
                     </div>
-                    <MatterSynthesisView
-                      synthesis={latestSynthesis.result}
-                      caseLabels={
-                        new Map(
-                          cases.map((c) => [
-                            c.id,
-                            c.snapshot?.caseName || c.caseName || c.id.slice(0, 8),
-                          ]),
-                        )
-                      }
-                      failedSubCallKeys={latestSynthesis.failedSections.map(
-                        (f) => f.section,
-                      )}
-                      onRerun={() => setConfirmRetry(true)}
-                      onRerunFailed={() => void rerunFailedSubCalls()}
-                      rerunDisabled={retryingSynthesis || synthRunning}
-                    />
+                    <ErrorBoundary label="the synthesis report">
+                      <MatterSynthesisView
+                        synthesis={latestSynthesis.result}
+                        caseLabels={
+                          new Map(
+                            cases.map((c) => [
+                              c.id,
+                              c.snapshot?.caseName || c.caseName || c.id.slice(0, 8),
+                            ]),
+                          )
+                        }
+                        failedSubCallKeys={latestSynthesis.failedSections.map(
+                          (f) => f.section,
+                        )}
+                        onRerun={() => setConfirmRetry(true)}
+                        onRerunFailed={() => void rerunFailedSubCalls()}
+                        rerunDisabled={retryingSynthesis || synthRunning}
+                      />
+                    </ErrorBoundary>
                   </div>
                 )}
             </>

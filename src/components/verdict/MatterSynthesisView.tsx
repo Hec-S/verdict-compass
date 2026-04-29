@@ -14,6 +14,28 @@ import { Cite } from "./Panel";
 import type { CaseSynthesis } from "@/lib/analysis-types";
 import { SYNTHESIS_SUB_CALLS, type SynthesisSubCallKey } from "@/lib/analysis-types";
 
+/** AI-generated fields are typed as string in our schema, but the model
+ *  occasionally returns an object or array for a "string" slot (we've seen
+ *  e.g. accidentMechanism come back as `{ defenseTheory, accidentMechanicsCites }`).
+ *  Rendering that directly throws "Objects are not valid as a React child".
+ *  This helper coerces any value to a renderable string instead of crashing. */
+function safeText(value: unknown, fallback = ""): string {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return value.map((v) => safeText(v, "")).filter(Boolean).join(" · ");
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 // ---------------- Shared label maps ----------------
 
 const STRENGTH_LABEL: Record<CaseSynthesis["execSummary"]["caseStrength"], string> = {
@@ -197,7 +219,7 @@ export function MatterSynthesisView({
           Defense theory
         </div>
         <p className="text-[18px] leading-snug font-medium text-foreground mb-5 print:text-[14px]">
-          {exec.defenseTheory || "No defense theory produced."}
+          {safeText(exec.defenseTheory) || "No defense theory produced."}
         </p>
 
         <div className="flex flex-wrap items-start gap-x-8 gap-y-4 mb-6">
@@ -210,7 +232,7 @@ export function MatterSynthesisView({
             </Badge>
             {exec.strengthRationale && (
               <p className="text-[12px] text-muted-foreground mt-1 max-w-md">
-                {exec.strengthRationale}
+                {safeText(exec.strengthRationale)}
               </p>
             )}
           </div>
@@ -223,7 +245,7 @@ export function MatterSynthesisView({
             </Badge>
             {exec.postureRationale && (
               <p className="text-[12px] text-muted-foreground mt-1 max-w-md">
-                {exec.postureRationale}
+                {safeText(exec.postureRationale)}
               </p>
             )}
           </div>
@@ -241,7 +263,7 @@ export function MatterSynthesisView({
               {exec.topThreats.map((t, i) => (
                 <li key={i} className="text-[13px] text-foreground leading-relaxed flex gap-2">
                   <span className="text-muted-foreground tabular-nums">{i + 1}.</span>
-                  <span>{t}</span>
+                  <span>{safeText(t)}</span>
                 </li>
               ))}
             </ul>
@@ -257,7 +279,7 @@ export function MatterSynthesisView({
               {exec.topOpportunities.map((t, i) => (
                 <li key={i} className="text-[13px] text-foreground leading-relaxed flex gap-2">
                   <span className="text-muted-foreground tabular-nums">{i + 1}.</span>
-                  <span>{t}</span>
+                  <span>{safeText(t)}</span>
                 </li>
               ))}
             </ul>
@@ -304,7 +326,7 @@ export function MatterSynthesisView({
                     </div>
                     {w.summary && (
                       <p className="text-[13px] text-foreground/90 mt-1.5 leading-relaxed">
-                        {w.summary}
+                        {safeText(w.summary)}
                       </p>
                     )}
                   </div>
@@ -321,7 +343,7 @@ export function MatterSynthesisView({
                           className="text-[12.5px] text-foreground/85 leading-snug flex gap-2"
                         >
                           <span className="text-muted-foreground">›</span>
-                          <span>{cp}</span>
+                          <span>{safeText(cp)}</span>
                         </li>
                       ))}
                     </ul>
@@ -345,7 +367,7 @@ export function MatterSynthesisView({
           {synthesis.contradictionMatrix.map((row, i) => (
             <div key={i} className="border border-border p-3 print:break-inside-avoid">
               <div className="flex items-start gap-2 mb-2">
-                <h3 className="flex-1 text-[13px] font-medium text-foreground">{row.topic}</h3>
+                <h3 className="flex-1 text-[13px] font-medium text-foreground">{safeText(row.topic)}</h3>
                 <Badge tone={THREAT_TONE[row.exploitability] ?? THREAT_TONE.medium}>
                   {row.exploitability} exploitability
                 </Badge>
@@ -363,11 +385,11 @@ export function MatterSynthesisView({
                     {row.witnesses.map((w, j) => (
                       <tr key={j} className="border-b border-border/60 last:border-0 align-top">
                         <td className="py-1.5 pr-3 font-medium text-foreground whitespace-nowrap">
-                          {w.deponentName}
+                          {safeText(w.deponentName)}
                         </td>
-                        <td className="py-1.5 pr-3 text-foreground/90">{w.position}</td>
+                        <td className="py-1.5 pr-3 text-foreground/90">{safeText(w.position)}</td>
                         <td className="py-1.5 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
-                          {w.cite}
+                          {safeText(w.cite)}
                         </td>
                       </tr>
                     ))}
@@ -377,7 +399,7 @@ export function MatterSynthesisView({
               {row.defenseUse && (
                 <p className="text-[12.5px] text-foreground/90 mt-2 leading-relaxed">
                   <span className="text-muted-foreground">Defense use: </span>
-                  {row.defenseUse}
+                  {safeText(row.defenseUse)}
                 </p>
               )}
             </div>
@@ -400,20 +422,20 @@ export function MatterSynthesisView({
           )}
           {synthesis.unifiedAdmissionsInventory.map((row, i) => (
             <div key={i} className="border border-border p-3 print:break-inside-avoid">
-              <h3 className="text-[13px] font-medium text-foreground mb-2">{row.topic}</h3>
+              <h3 className="text-[13px] font-medium text-foreground mb-2">{safeText(row.topic)}</h3>
               <ul className="space-y-1.5 mb-2">
                 {row.admissions.map((a, j) => (
                   <li key={j} className="text-[12.5px] leading-snug">
-                    <span className="font-medium text-foreground">{a.deponentName}:</span>{" "}
-                    <span className="text-foreground/90">{a.admission}</span>
-                    {a.cite && <Cite>{a.cite}</Cite>}
+                    <span className="font-medium text-foreground">{safeText(a.deponentName)}:</span>{" "}
+                    <span className="text-foreground/90">{safeText(a.admission)}</span>
+                    {a.cite && <Cite>{safeText(a.cite)}</Cite>}
                   </li>
                 ))}
               </ul>
               {row.trialUse && (
                 <p className="text-[12.5px] text-foreground/90 leading-relaxed">
                   <span className="text-muted-foreground">Trial use: </span>
-                  {row.trialUse}
+                  {safeText(row.trialUse)}
                 </p>
               )}
             </div>
@@ -440,7 +462,7 @@ export function MatterSynthesisView({
               {synthesis.causationAnalysis.baselineConditions.map((c, i) => (
                 <li key={i} className="text-[12.5px] text-foreground/90 flex gap-2">
                   <span className="text-muted-foreground">›</span>
-                  <span>{c}</span>
+                  <span>{safeText(c)}</span>
                 </li>
               ))}
             </ul>
@@ -456,7 +478,7 @@ export function MatterSynthesisView({
               {synthesis.causationAnalysis.priorAccidentSequelae.map((c, i) => (
                 <li key={i} className="text-[12.5px] text-foreground/90 flex gap-2">
                   <span className="text-muted-foreground">›</span>
-                  <span>{c}</span>
+                  <span>{safeText(c)}</span>
                 </li>
               ))}
             </ul>
@@ -468,7 +490,7 @@ export function MatterSynthesisView({
               Accident mechanism
             </div>
             <p className="text-[13px] text-foreground/90 leading-relaxed">
-              {synthesis.causationAnalysis.accidentMechanism}
+              {safeText(synthesis.causationAnalysis.accidentMechanism)}
             </p>
           </div>
         )}
@@ -481,7 +503,7 @@ export function MatterSynthesisView({
               {synthesis.causationAnalysis.apportionmentArguments.map((a, i) => (
                 <li key={i} className="text-[13px] text-foreground/90 flex gap-2 leading-relaxed">
                   <span className="text-muted-foreground tabular-nums">{i + 1}.</span>
-                  <span>{a}</span>
+                  <span>{safeText(a)}</span>
                 </li>
               ))}
             </ul>
@@ -493,7 +515,7 @@ export function MatterSynthesisView({
               Weakest causation link
             </div>
             <p className="text-[13px] text-foreground leading-relaxed">
-              {synthesis.causationAnalysis.weakestCausationLink}
+              {safeText(synthesis.causationAnalysis.weakestCausationLink)}
             </p>
           </div>
         )}
@@ -516,14 +538,14 @@ export function MatterSynthesisView({
           {synthesis.methodologyChallenges.map((m, i) => (
             <div key={i} className="border border-border p-3 print:break-inside-avoid">
               <div className="flex items-start gap-2 mb-1.5 flex-wrap">
-                <span className="text-[13px] font-medium text-foreground">{m.targetWitness}</span>
+                <span className="text-[13px] font-medium text-foreground">{safeText(m.targetWitness)}</span>
                 <Badge tone="bg-foreground/10 text-foreground">{m.motionType}</Badge>
                 <Cite>{labelFor(m.caseId, m.targetWitness)}</Cite>
               </div>
-              <p className="text-[12.5px] text-foreground/90 leading-relaxed">{m.basis}</p>
+              <p className="text-[12.5px] text-foreground/90 leading-relaxed">{safeText(m.basis)}</p>
               {m.supportingCites && m.supportingCites.length > 0 && (
                 <p className="mt-1.5 text-[11px] font-mono text-muted-foreground">
-                  {m.supportingCites.join(" · ")}
+                  {m.supportingCites.map((c) => safeText(c)).join(" · ")}
                 </p>
               )}
             </div>
@@ -544,7 +566,7 @@ export function MatterSynthesisView({
               Pipeline map
             </div>
             <p className="text-[13px] text-foreground/90 leading-relaxed">
-              {synthesis.biasNarrative.pipelineMap}
+              {safeText(synthesis.biasNarrative.pipelineMap)}
             </p>
           </div>
         )}
@@ -560,7 +582,7 @@ export function MatterSynthesisView({
               {synthesis.biasNarrative.financialRelationships.map((c, i) => (
                 <li key={i} className="text-[12.5px] text-foreground/90 flex gap-2">
                   <span className="text-muted-foreground">›</span>
-                  <span>{c}</span>
+                  <span>{safeText(c)}</span>
                 </li>
               ))}
             </ul>
@@ -576,7 +598,7 @@ export function MatterSynthesisView({
               {synthesis.biasNarrative.repeatPlayerPatterns.map((c, i) => (
                 <li key={i} className="text-[12.5px] text-foreground/90 flex gap-2">
                   <span className="text-muted-foreground">›</span>
-                  <span>{c}</span>
+                  <span>{safeText(c)}</span>
                 </li>
               ))}
             </ul>
@@ -588,7 +610,7 @@ export function MatterSynthesisView({
               Trial narrative
             </div>
             <p className="text-[13px] text-foreground leading-relaxed">
-              {synthesis.biasNarrative.trialNarrative}
+              {safeText(synthesis.biasNarrative.trialNarrative)}
             </p>
           </div>
         )}
@@ -608,15 +630,15 @@ export function MatterSynthesisView({
           {synthesis.motionsInLimine.map((m, i) => (
             <div key={i} className="border border-border p-3 print:break-inside-avoid">
               <div className="flex items-start gap-2 mb-1 flex-wrap">
-                <h3 className="flex-1 text-[13px] font-medium text-foreground">{m.motion}</h3>
+                <h3 className="flex-1 text-[13px] font-medium text-foreground">{safeText(m.motion)}</h3>
                 <Badge tone={PRIORITY_TONE[m.priority] ?? PRIORITY_TONE.consider}>
                   {m.priority.replace(/_/g, " ")}
                 </Badge>
               </div>
-              <p className="text-[12.5px] text-foreground/90 leading-relaxed">{m.basis}</p>
+              <p className="text-[12.5px] text-foreground/90 leading-relaxed">{safeText(m.basis)}</p>
               {m.supportingCites && m.supportingCites.length > 0 && (
                 <p className="mt-1.5 text-[11px] font-mono text-muted-foreground">
-                  {m.supportingCites.join(" · ")}
+                  {m.supportingCites.map((c) => safeText(c)).join(" · ")}
                 </p>
               )}
             </div>
@@ -637,7 +659,7 @@ export function MatterSynthesisView({
           {synthesis.discoveryGaps.map((g, i) => (
             <div key={i} className="border border-border p-3 print:break-inside-avoid">
               <div className="flex items-start gap-2 mb-1 flex-wrap">
-                <h3 className="flex-1 text-[13px] font-medium text-foreground">{g.gap}</h3>
+                <h3 className="flex-1 text-[13px] font-medium text-foreground">{safeText(g.gap)}</h3>
                 <Badge tone={PRIORITY_TONE[g.priority] ?? PRIORITY_TONE.medium}>
                   {g.priority}
                 </Badge>
@@ -645,13 +667,13 @@ export function MatterSynthesisView({
               {g.impact && (
                 <p className="text-[12.5px] text-foreground/90 leading-relaxed">
                   <span className="text-muted-foreground">Impact: </span>
-                  {g.impact}
+                  {safeText(g.impact)}
                 </p>
               )}
               {g.recommendedAction && (
                 <p className="text-[12.5px] text-foreground/90 leading-relaxed mt-1">
                   <span className="text-muted-foreground">Action: </span>
-                  {g.recommendedAction}
+                  {safeText(g.recommendedAction)}
                 </p>
               )}
             </div>
@@ -671,7 +693,7 @@ export function MatterSynthesisView({
           )}
           {synthesis.trialThemes.map((t, i) => (
             <div key={i} className="border border-border p-3 print:break-inside-avoid">
-              <h3 className="text-[14px] font-medium text-foreground mb-2">{t.theme}</h3>
+              <h3 className="text-[14px] font-medium text-foreground mb-2">{safeText(t.theme)}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 print:grid-cols-2">
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-1">
@@ -680,7 +702,7 @@ export function MatterSynthesisView({
                   <ul className="space-y-0.5">
                     {t.supportingWitnesses.map((w, j) => (
                       <li key={j} className="text-[12.5px] text-foreground/90">
-                        · {w}
+                        · {safeText(w)}
                       </li>
                     ))}
                   </ul>
@@ -692,7 +714,7 @@ export function MatterSynthesisView({
                   <ul className="space-y-0.5">
                     {t.supportingFacts.map((f, j) => (
                       <li key={j} className="text-[12.5px] text-foreground/90">
-                        · {f}
+                        · {safeText(f)}
                       </li>
                     ))}
                   </ul>
@@ -701,7 +723,7 @@ export function MatterSynthesisView({
               {t.voirDireAngle && (
                 <p className="mt-2 text-[12.5px] text-foreground/90 leading-relaxed">
                   <span className="text-muted-foreground">Voir dire angle: </span>
-                  {t.voirDireAngle}
+                  {safeText(t.voirDireAngle)}
                 </p>
               )}
             </div>
@@ -722,7 +744,7 @@ export function MatterSynthesisView({
           {synthesis.whatWeMessedUp.map((m, i) => (
             <div key={i} className="border border-border p-3 print:break-inside-avoid">
               <div className="flex items-start gap-2 mb-1 flex-wrap">
-                <h3 className="flex-1 text-[13px] font-medium text-foreground">{m.deposition}</h3>
+                <h3 className="flex-1 text-[13px] font-medium text-foreground">{safeText(m.deposition)}</h3>
                 <Badge
                   tone={
                     m.canStillFix
@@ -735,18 +757,18 @@ export function MatterSynthesisView({
               </div>
               <p className="text-[12.5px] text-foreground/90 leading-relaxed">
                 <span className="text-muted-foreground">Missed: </span>
-                {m.missedOpportunity}
+                {safeText(m.missedOpportunity)}
               </p>
               {m.wouldHaveHelped && (
                 <p className="text-[12.5px] text-foreground/90 leading-relaxed mt-1">
                   <span className="text-muted-foreground">Would have helped: </span>
-                  {m.wouldHaveHelped}
+                  {safeText(m.wouldHaveHelped)}
                 </p>
               )}
               {m.canStillFix && m.fixAction && (
                 <p className="text-[12.5px] text-foreground leading-relaxed mt-1">
                   <span className="text-muted-foreground">Fix: </span>
-                  {m.fixAction}
+                  {safeText(m.fixAction)}
                 </p>
               )}
             </div>
@@ -773,10 +795,10 @@ export function MatterSynthesisView({
                 {a.priority.replace(/_/g, " ")}
               </Badge>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium text-foreground leading-snug">{a.action}</p>
+                <p className="text-[13px] font-medium text-foreground leading-snug">{safeText(a.action)}</p>
                 {a.rationale && (
                   <p className="text-[12.5px] text-muted-foreground leading-relaxed mt-0.5">
-                    {a.rationale}
+                    {safeText(a.rationale)}
                   </p>
                 )}
               </div>
