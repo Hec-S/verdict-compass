@@ -705,7 +705,7 @@ export function MatterSynthesisView({
       <main className="print:hidden">
         <div className="px-6 py-12">
           <div key={currentTab}>
-            {currentTab === "overview" ? (
+            {currentTab === "overview" || currentTab === "causation" ? (
               renderTab(currentTab)
             ) : (
               <TabContainer width="wide">
