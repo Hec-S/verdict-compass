@@ -705,7 +705,7 @@ export function MatterSynthesisView({
       <main className="print:hidden">
         <div className="px-6 py-12">
           <div key={currentTab}>
-            {currentTab === "overview" ? (
+            {currentTab === "overview" || currentTab === "causation" ? (
               renderTab(currentTab)
             ) : (
               <TabContainer width="wide">
@@ -1102,6 +1102,102 @@ function WitnessesTab({
   );
 }
 
+/**
+ * Accident mechanism may have been stored as a string OR (legacy / mis-shaped
+ * model output) as an object like { defenseTheory, accidentMechanicsCites }.
+ * Extract a prose body and any citation array from either shape.
+ */
+function extractAccidentMechanism(value: unknown): { prose: string; cites: string[] } {
+  if (value == null) return { prose: "", cites: [] };
+  if (typeof value === "string") {
+    // Sometimes the string itself is JSON.
+    const trimmed = value.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        return extractAccidentMechanism(JSON.parse(trimmed));
+      } catch {
+        // fall through, treat as plain prose
+      }
+    }
+    return { prose: value, cites: [] };
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const proseKey = [
+      "defenseTheory",
+      "prose",
+      "narrative",
+      "summary",
+      "mechanism",
+      "accidentMechanism",
+      "text",
+    ].find((k) => typeof obj[k] === "string" && (obj[k] as string).length > 0);
+    const prose = proseKey ? (obj[proseKey] as string) : "";
+    const citeKey = Object.keys(obj).find(
+      (k) => /cite/i.test(k) && Array.isArray(obj[k]),
+    );
+    const cites = citeKey
+      ? ((obj[citeKey] as unknown[]).map((c) => safeText(c)).filter(Boolean) as string[])
+      : [];
+    if (prose || cites.length > 0) return { prose, cites };
+    // Fallback: stringify so we never silently drop content.
+    return { prose: safeText(value), cites: [] };
+  }
+  return { prose: safeText(value), cites: [] };
+}
+
+/**
+ * Pull (p.X lines Y-Z) style citations off the end of a string.
+ * Returns the prose with trailing cites stripped, plus the cite list.
+ */
+function splitProseAndCites(text: string): { prose: string; cites: string[] } {
+  if (!text) return { prose: "", cites: [] };
+  const citeRe = /\((?:p\.?|page)\s*\d+[^()]*\)/gi;
+  const cites: string[] = [];
+  // Collect trailing cites: keep stripping (...) cite-like groups from the end.
+  let prose = text.trim();
+  // Pull all cite-like matches anywhere; we'll keep them as a group at bottom
+  // but also leave inline ones in place. Strategy: only extract cites that are
+  // at the end of the string.
+  while (true) {
+    const m = prose.match(/\s*(\((?:p\.?|page)\s*\d+[^()]*\))\s*\.?\s*$/i);
+    if (!m) break;
+    cites.unshift(m[1]);
+    prose = prose.slice(0, m.index).trim();
+  }
+  // If no trailing cites were extracted, also try inline collection (don't strip).
+  if (cites.length === 0) {
+    const inline = text.match(citeRe);
+    if (inline) cites.push(...inline);
+  }
+  return { prose, cites };
+}
+
+/** Split prose into a bold headline (first sentence) and the remainder. */
+function splitHeadline(text: string): { headline: string; rest: string } {
+  if (!text) return { headline: "", rest: "" };
+  const m = text.match(/^([\s\S]*?[.!?])(\s+)([\s\S]+)$/);
+  if (!m) return { headline: text, rest: "" };
+  return { headline: m[1], rest: m[3] };
+}
+
+/** Render a baseline/sequela cell: prose on top, trailing cites in mono below. */
+function CellWithCite({ value }: { value: unknown }) {
+  const { prose, cites } = splitProseAndCites(safeText(value));
+  return (
+    <>
+      <div>{prose || safeText(value)}</div>
+      {cites.length > 0 && (
+        <div className="mt-2 font-mono text-[12px] text-muted-foreground space-y-0.5">
+          {cites.map((c, i) => (
+            <div key={i}>{c}</div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function CausationTab({
   data,
   isFailed,
@@ -1113,99 +1209,122 @@ function CausationTab({
 }) {
   if (isFailed) {
     return (
-      <TabContainer>
-        <TabSectionHeader title="Causation analysis" />
-        <UnavailableInline
-          subCallKey="causationMethodology"
-          onRerunFailed={onRerunFailed}
-          block
-        />
+      <TabContainer width="wide">
+        <SectionCard>
+          <TabSectionHeader title="Causation analysis" />
+          <UnavailableInline
+            subCallKey="causationMethodology"
+            onRerunFailed={onRerunFailed}
+            block
+          />
+        </SectionCard>
       </TabContainer>
     );
   }
+  const mechanism = extractAccidentMechanism(data.accidentMechanism);
+  const baseline = data.baselineConditions ?? [];
+  const sequelae = data.priorAccidentSequelae ?? [];
+  const rowCount = Math.max(baseline.length, sequelae.length);
+  const hasComparison = rowCount > 0;
+  const args = data.apportionmentArguments ?? [];
+
   return (
     <TabContainer width="wide">
-      <TabSectionHeader title="Causation analysis" />
-      <div className="space-y-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-              Baseline conditions
-            </div>
-            <ul className="space-y-2">
-              {data.baselineConditions.length === 0 && (
-                <li className="text-[14px] text-muted-foreground italic">None identified.</li>
-              )}
-              {data.baselineConditions.map((c, i) => (
-                <li
-                  key={i}
-                  className="text-[15px] text-foreground/90 flex gap-2 leading-relaxed"
-                >
-                  <span className="text-muted-foreground">›</span>
-                  <span>{safeText(c)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-              Prior accident sequelae
-            </div>
-            <ul className="space-y-2">
-              {data.priorAccidentSequelae.length === 0 && (
-                <li className="text-[14px] text-muted-foreground italic">None identified.</li>
-              )}
-              {data.priorAccidentSequelae.map((c, i) => (
-                <li
-                  key={i}
-                  className="text-[15px] text-foreground/90 flex gap-2 leading-relaxed"
-                >
-                  <span className="text-muted-foreground">›</span>
-                  <span>{safeText(c)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-        {data.accidentMechanism && (
-          <div className="max-w-[760px]">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-              Accident mechanism
-            </div>
-            <p className="text-[16px] leading-[1.6] text-foreground">
-              {safeText(data.accidentMechanism)}
-            </p>
-          </div>
+      <div className="space-y-6">
+        {/* Card 1: Accident mechanism */}
+        {(mechanism.prose || mechanism.cites.length > 0) && (
+          <SectionCard label="Accident mechanism">
+            {mechanism.prose && (
+              <p className="text-[16px] leading-[1.6] text-foreground whitespace-pre-line">
+                {mechanism.prose}
+              </p>
+            )}
+            {mechanism.cites.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-border/60 font-mono text-[12px] text-muted-foreground space-y-1">
+                {mechanism.cites.map((c, i) => (
+                  <div key={i}>{c}</div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
         )}
-        {data.apportionmentArguments.length > 0 && (
-          <div className="max-w-[760px]">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-              Apportionment arguments
+
+        {/* Card 2: Baseline vs prior accident sequela */}
+        {hasComparison && (
+          <SectionCard label="Baseline condition vs prior accident sequela">
+            <div className="grid grid-cols-2 gap-x-8">
+              <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground pb-2 border-b border-border">
+                Baseline condition
+              </div>
+              <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground pb-2 border-b border-border">
+                Prior accident sequela
+              </div>
+              {Array.from({ length: rowCount }).map((_, i) => {
+                const b = baseline[i];
+                const s = sequelae[i];
+                return (
+                  <div
+                    key={`row-${i}`}
+                    className="contents"
+                  >
+                    <div className="py-3 border-b border-border/60 text-[15px] leading-[1.5] text-foreground/90">
+                      {b ? <CellWithCite value={b} /> : <span className="text-muted-foreground">—</span>}
+                    </div>
+                    <div className="py-3 border-b border-border/60 text-[15px] leading-[1.5] text-foreground/90">
+                      {s ? <CellWithCite value={s} /> : <span className="text-muted-foreground">—</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <ol className="space-y-3 list-none">
-              {data.apportionmentArguments.map((a, i) => (
-                <li
-                  key={i}
-                  className="text-[16px] text-foreground flex gap-3 leading-[1.6]"
-                >
-                  <span className="text-muted-foreground tabular-nums shrink-0">
-                    {i + 1}.
-                  </span>
-                  <span>{safeText(a)}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
+          </SectionCard>
         )}
+
+        {/* Card 3: Apportionment arguments */}
+        {args.length > 0 && (
+          <SectionCard label="Apportionment arguments">
+            <div className="space-y-4">
+              {args.map((a, i) => {
+                const { prose, cites } = splitProseAndCites(safeText(a));
+                const { headline, rest } = splitHeadline(prose);
+                return (
+                  <div
+                    key={i}
+                    className="border border-border rounded-md p-6 flex gap-5"
+                  >
+                    <div className="text-[24px] leading-none text-muted-foreground tabular-nums shrink-0 pt-0.5">
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] leading-[1.6] text-foreground">
+                        <span className="font-medium">{headline}</span>
+                        {rest && <span> {rest}</span>}
+                      </p>
+                      {cites.length > 0 && (
+                        <div className="mt-3 pt-2 border-t border-border/60 font-mono text-[12px] text-muted-foreground space-y-1">
+                          {cites.map((c, j) => (
+                            <div key={j}>{c}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+        )}
+
+        {/* Card 4: Weakest causation link */}
         {data.weakestCausationLink && (
-          <div className="max-w-[760px] border-l-4 border-foreground bg-foreground/[0.03] pl-5 pr-4 py-4">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-              Weakest causation link
-            </div>
+          <SectionCard
+            label="Weakest causation link"
+            className="border-l-4 border-l-foreground bg-foreground/[0.03]"
+          >
             <p className="text-[17px] text-foreground leading-[1.6] font-medium">
               {safeText(data.weakestCausationLink)}
             </p>
-          </div>
+          </SectionCard>
         )}
       </div>
     </TabContainer>

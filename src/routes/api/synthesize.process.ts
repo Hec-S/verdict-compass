@@ -390,7 +390,7 @@ Schema:
   "causationAnalysis": {
     "baselineConditions": [ "" ],
     "priorAccidentSequelae": [ "" ],
-    "accidentMechanism": "",
+    "accidentMechanism": "string — narrative prose describing what the record establishes about THIS accident's mechanism and severity, with embedded inline citations in (p.X lines Y-Z) format. Plain prose, no JSON, no markdown.",
     "apportionmentArguments": [ "" ],
     "weakestCausationLink": "Name the exact testimony or gap that defense should drive at trial."
   },
