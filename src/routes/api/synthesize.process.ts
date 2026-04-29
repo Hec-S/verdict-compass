@@ -23,6 +23,111 @@ function getEnv(key: string): string | undefined {
   return g.process?.env?.[key] ?? g.Deno?.env?.get?.(key);
 }
 
+// ---------------- Rate limiting & 429 retry ----------------
+//
+// Anthropic enforces an input-tokens-per-minute (ITPM) ceiling. Stage B fires
+// 7 sub-calls back-to-back, each carrying the full deposition card list, and
+// can blow through 30k ITPM in well under a minute. We track recent input
+// token usage in a sliding 60s window and sleep before any sub-call that
+// would push us over the safe ceiling. We also auto-retry 429 responses with
+// the duration the server suggests via retry-after.
+
+const ITPM_LIMIT = 28_000; // 2K buffer below Anthropic's 30K/min
+const RATE_WINDOW_MS = 60_000;
+
+interface TokenUsageEntry {
+  ts: number;
+  tokens: number;
+}
+const tokenUsageWindow: TokenUsageEntry[] = [];
+
+function approxTokenCount(s: string): number {
+  // Rough approximation that's close enough for Claude (~4 chars/token).
+  return Math.ceil(s.length / 4);
+}
+
+function pruneRateWindow(now: number) {
+  while (
+    tokenUsageWindow.length > 0 &&
+    now - tokenUsageWindow[0].ts > RATE_WINDOW_MS
+  ) {
+    tokenUsageWindow.shift();
+  }
+}
+
+function tokensInWindow(now: number): number {
+  pruneRateWindow(now);
+  return tokenUsageWindow.reduce((acc, e) => acc + e.tokens, 0);
+}
+
+async function awaitRateLimitCapacity(label: string, plannedTokens: number) {
+  // Plan for the worst — if this single call alone exceeds the limit we still
+  // have to issue it. Wait until *prior* usage drains enough to leave room.
+  const target = Math.min(plannedTokens, ITPM_LIMIT);
+  // Loop because the head of the queue may be far in the past; one prune may
+  // not be enough if multiple older entries remain.
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const now = Date.now();
+    const used = tokensInWindow(now);
+    if (used + target <= ITPM_LIMIT) return;
+    // Sleep until the oldest entry falls out of the window.
+    const oldest = tokenUsageWindow[0];
+    if (!oldest) return;
+    const waitMs = Math.max(250, RATE_WINDOW_MS - (now - oldest.ts) + 50);
+    console.log(
+      `[rate-limit] ${label}: ${used} tokens used in window, planned=${plannedTokens}, sleeping ${waitMs}ms`,
+    );
+    await sleep(waitMs);
+  }
+}
+
+function recordTokenUsage(tokens: number) {
+  tokenUsageWindow.push({ ts: Date.now(), tokens });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Wraps callClaude with: ITPM-aware pre-throttle and exponential-backoff
+ *  retry on 429. Up to 2 retries (3 attempts total). */
+async function callClaudeThrottled(
+  apiKey: string,
+  system: string,
+  user: string,
+  maxTokens: number,
+  label: string,
+): Promise<string> {
+  const inputTokens = approxTokenCount(system) + approxTokenCount(user);
+  await awaitRateLimitCapacity(label, inputTokens);
+
+  const maxAttempts = 3;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      recordTokenUsage(inputTokens);
+      return await callClaude(apiKey, system, user, maxTokens);
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const is429 = /\b429\b|rate_limit|rate limit/i.test(msg);
+      if (!is429 || attempt === maxAttempts) throw err;
+      // Try to extract a retry-after seconds value from the error body.
+      const m = msg.match(/retry[-_ ]?after[^0-9]{0,8}(\d+)/i);
+      const retryAfterSec = m ? parseInt(m[1], 10) : 30;
+      const waitMs = Math.max(1000, retryAfterSec * 1000);
+      console.warn(
+        `[${label}] rate limited, retrying in ${retryAfterSec}s (attempt ${attempt} of ${maxAttempts})`,
+      );
+      await sleep(waitMs);
+      // After waiting, re-check our local window too.
+      await awaitRateLimitCapacity(label, inputTokens);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 interface CaseRow {
   id: string;
   case_name: string;
