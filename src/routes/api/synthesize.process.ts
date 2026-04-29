@@ -851,88 +851,220 @@ ${shared}`;
   }
 }
 
-export async function synthesizeCausationAndMethodology(
+export async function synthesizeCausationAnalysis(
   apiKey: string,
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSectionInput(matter, cards, "causationMethodology");
-  const userMessage = `Produce the CAUSATION AND METHODOLOGY slice of the case-level defense synthesis.
+  const shared = buildSectionInput(matter, cards, "causationAnalysis");
+  const userMessage = `Produce ONLY the CAUSATION ANALYSIS for this matter. No other keys. Most PI cases are won or lost on causation — be specific and grounded in the record.
 
 ${shared}
 
-Return ONLY the following JSON keys and nothing else: causationAnalysis, methodologyChallenges.
-
-Schema:
+Return ONLY this JSON shape:
 {
   "causationAnalysis": {
-    "baselineConditions": [ "" ],
-    "priorAccidentSequelae": [ "" ],
-    "accidentMechanism": "string — narrative prose describing what the record establishes about THIS accident's mechanism and severity, with embedded inline citations in (p.X lines Y-Z) format. Plain prose, no JSON, no markdown.",
-    "apportionmentArguments": [ "" ],
-    "weakestCausationLink": "Name the exact testimony or gap that defense should drive at trial."
-  },
-  "methodologyChallenges": [
-    { "targetWitness": "", "caseId": "", "basis": "", "motionType": "Daubert|motion_in_limine|limit_testimony|exclude", "supportingCites": [ "" ] }
-  ]
+    "baselineConditions": [ "specific pre-accident condition with witness/cite, max 25 words" ],
+    "priorAccidentSequelae": [ "specific prior-accident sequela with witness/cite, max 25 words" ],
+    "accidentMechanism": "Narrative prose describing what the record establishes about THIS accident's mechanism and severity, with embedded inline (p.X lines Y-Z) citations. Plain prose, no JSON, no markdown.",
+    "apportionmentArguments": [ "specific apportionment argument tied to baseline vs sequela, max 40 words" ],
+    "weakestCausationLink": "Name the exact testimony or gap defense should drive at trial."
+  }
 }
 
-Most PI cases are won or lost on causation. Be specific. methodologyChallenges: every available challenge to plaintiff's experts and treating providers, framed as motions, with cites.`;
-  return runSubSynthesis(apiKey, "causationMethodology", userMessage, 3000);
+Rules:
+- baselineConditions: 3+ items if the record supports it
+- priorAccidentSequelae: 2+ items if the record supports it
+- apportionmentArguments: 3-6 items
+- Do not include any other top-level keys`;
+  return runSubSynthesis(apiKey, "causationAnalysis", userMessage, 3000);
 }
 
-export async function synthesizeMotionsAndDiscovery(
+export async function synthesizeMethodologyChallenges(
   apiKey: string,
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSectionInput(matter, cards, "motionsDiscovery");
-  const userMessage = `Produce the MOTIONS AND DISCOVERY slice of the case-level defense synthesis.
+  const shared = buildSectionInput(matter, cards, "methodologyChallenges");
+  const userMessage = `From the deposition cards below, identify every available methodology challenge to plaintiff's experts and treating providers, framed as motions. These are Daubert/Hallmark grounds the defense can deploy pretrial.
+
+Common methodology challenge categories in PI cases:
+- Testing administered through unqualified translators
+- Reliance on patient self-report without objective verification
+- No independent record review before forming opinions
+- Scope-of-practice violations
+- Departure from accepted protocols
+- Foundation gaps for testimony given
+- Bias indicators rendering opinions unreliable
+
+Return ONLY this JSON:
+{
+  "methodologyChallenges": [
+    {
+      "targetWitness": "deponent name",
+      "caseId": "<id>",
+      "basis": "specific methodology problem with detail, max 50 words",
+      "motionType": "Daubert | motion_in_limine | limit_testimony | exclude",
+      "supportingCites": ["p.X, lines Y-Z", "p.A, lines B-C"]
+    }
+  ]
+}
+
+Rules:
+- Return at least one methodology challenge for each plaintiff-side expert and treating provider in the cards (typically 4-8 challenges for a 12-witness PI matter)
+- Each challenge must specify a concrete methodology problem, not a generic credibility concern
+- supportingCites must include at least 2 specific page/line cites
+- motionType must be one of the four enum values listed
+- If a witness has no defensible methodology challenge, omit them — do not produce weak filler
+- Use the exact caseId from each deposition card
+
+${shared}`;
+  return runSubSynthesis(apiKey, "methodologyChallenges", userMessage, 2500);
+}
+
+export async function synthesizeMotionsInLimine(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSectionInput(matter, cards, "motionsInLimine");
+  const userMessage = `Produce ONLY the MOTIONS IN LIMINE roadmap for this matter. No other keys.
 
 ${shared}
 
-Return ONLY the following JSON keys and nothing else: motionsInLimine, discoveryGaps.
-
-Schema:
+Return ONLY this JSON:
 {
   "motionsInLimine": [
-    { "motion": "", "basis": "", "supportingCites": [ "" ], "priority": "must_file|should_file|consider" }
-  ],
-  "discoveryGaps": [
-    { "gap": "", "impact": "", "recommendedAction": "", "priority": "high|medium|low" }
+    {
+      "motion": "specific motion title, max 15 words",
+      "basis": "legal/factual basis with specific cites, max 50 words",
+      "supportingCites": ["p.X, lines Y-Z"],
+      "priority": "must_file | should_file | consider"
+    }
   ]
 }
 
-motionsInLimine priority: must_file = case-defining; should_file = significant tactical advantage; consider = useful if budget allows.
-discoveryGaps priority: high = before MSJ deadline; medium = before pretrial; low = useful but not critical.`;
-  return runSubSynthesis(apiKey, "motionsDiscovery", userMessage, 2500);
+Rules:
+- Return 5-10 motions for a typical multi-witness PI matter
+- must_file = case-defining; should_file = significant tactical advantage; consider = useful if budget allows
+- Every motion must reference specific deposition testimony or admissions
+- Do not include any other top-level keys`;
+  return runSubSynthesis(apiKey, "motionsInLimine", userMessage, 3000);
 }
 
-export async function synthesizeRetrospective(
+export async function synthesizeDiscoveryGaps(
   apiKey: string,
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSectionInput(matter, cards, "retrospective");
-  const userMessage = `Produce the RETROSPECTIVE slice of the case-level defense synthesis.
+  const shared = buildSectionInput(matter, cards, "discoveryGaps");
+  const userMessage = `From the deposition cards below, identify everything missing from the record that defense still needs but does not yet have. These are discovery gaps the defense should close before trial.
 
-${shared}
+Discovery gap categories to look for:
+- Pre-accident medical records that would establish baseline
+- Prior accident records (workers' comp, prior MVAs)
+- Provider financial records (lien amounts, fee histories, 1099s)
+- Imaging/testing not yet obtained
+- Witness statements or contact information not pursued
+- Documents referenced in testimony but not produced
+- Subsequent treatment records (post-deposition treatment)
 
-Return ONLY the following JSON keys and nothing else: whatWeMessedUp, whatToDoNext.
-
-Schema:
+Return ONLY this JSON:
 {
-  "whatWeMessedUp": [
-    { "deposition": "", "caseId": "", "missedOpportunity": "", "wouldHaveHelped": "", "canStillFix": false, "fixAction": "" }
-  ],
-  "whatToDoNext": [
-    { "action": "", "priority": "this_week|before_trial|consider", "rationale": "" }
+  "discoveryGaps": [
+    {
+      "gap": "specific missing item, max 20 words",
+      "impact": "why this matters to defense, max 40 words",
+      "recommendedAction": "specific subpoena/RFP/deposition needed, max 30 words",
+      "priority": "high | medium | low"
+    }
   ]
 }
 
-whatWeMessedUp: real critique. canStillFix is true if a follow-up deposition, supplemental discovery, or motion can recover; false if the moment has passed.
-whatToDoNext: prioritized action list. this_week = drop everything; before_trial = pretrial checklist; consider = if time/budget allows.`;
-  return runSubSynthesis(apiKey, "retrospective", userMessage, 2500);
+Rules:
+- Return at least 5 discovery gaps for a typical multi-witness PI matter (defense always has gaps)
+- 'high' priority = needed before MSJ deadline
+- 'medium' priority = needed before pretrial conference
+- 'low' priority = useful for trial prep but not critical
+- Each gap must reference something concrete from the deposition cards (a witness mentioned a record, an unanswered question, a financial relationship not quantified)
+- Do not list things defense already has — only true gaps
+
+${shared}`;
+  return runSubSynthesis(apiKey, "discoveryGaps", userMessage, 2000);
+}
+
+export async function synthesizeWhatWeMessedUp(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSectionInput(matter, cards, "whatWeMessedUp");
+  const userMessage = `Produce ONLY the MISSED OPPORTUNITIES retrospective for this matter. No other keys. Real critique — what defense counsel failed to do in deposition that mattered.
+
+${shared}
+
+Return ONLY this JSON:
+{
+  "whatWeMessedUp": [
+    {
+      "deposition": "deponent name",
+      "caseId": "<id>",
+      "missedOpportunity": "specific question or topic that should have been pursued, max 40 words",
+      "wouldHaveHelped": "what defense would have gained, max 30 words",
+      "canStillFix": true,
+      "fixAction": "specific follow-up deposition, supplemental discovery, or motion that recovers it; empty string if not fixable"
+    }
+  ]
+}
+
+Rules:
+- Return 5-10 missed opportunities for a typical multi-witness PI matter
+- canStillFix = true if a follow-up deposition, supplemental discovery, or motion can recover
+- canStillFix = false if the moment has passed (e.g. trial is imminent, witness unavailable)
+- Use the exact caseId from each deposition card
+- Do not include any other top-level keys`;
+  return runSubSynthesis(apiKey, "whatWeMessedUp", userMessage, 3000);
+}
+
+export async function synthesizeWhatToDoNext(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSectionInput(matter, cards, "whatToDoNext");
+  const userMessage = `From the deposition cards below and the rest of the synthesis context, produce a prioritized action list for defense counsel. What should defense actually do this week, before trial, and optionally?
+
+Next-step categories:
+- File specific motion (with deadline)
+- Take supplemental deposition of [witness] on [topic]
+- Subpoena specific records from specific party
+- Retain expert in specific specialty
+- Draft jury instruction on specific issue
+- Prepare specific exhibit (chart, timeline, comparison)
+- Settlement conference / mediation prep with specific exposure analysis
+
+Return ONLY this JSON:
+{
+  "whatToDoNext": [
+    {
+      "action": "specific actionable instruction, max 30 words",
+      "priority": "this_week | before_trial | consider",
+      "rationale": "why this matters and how it advances the defense, max 40 words"
+    }
+  ]
+}
+
+Rules:
+- Return at least 8 actions for a typical multi-witness PI matter
+- 'this_week' = drop everything and do this; tied to a near-term deadline or strategic urgency
+- 'before_trial' = put on pretrial checklist
+- 'consider' = useful if time/budget allows
+- Each action must be a specific, executable instruction — not generic advice
+- Actions should connect to specific findings (e.g., 'File Daubert motion against Baumann based on translator methodology issue')
+- Mix of motion practice, additional discovery, expert retention, exhibit preparation, and trial prep
+
+${shared}`;
+  return runSubSynthesis(apiKey, "whatToDoNext", userMessage, 2000);
 }
 
 function mergeSynthesis(
