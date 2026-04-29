@@ -1289,7 +1289,17 @@ export async function runSynthesisRetrySections(
       })
       .filter((f) => f.section);
     const remainingPrior = priorNormalized.filter(
-      (f) => !attemptedKeys.includes(f.section) && !succeededKeys.includes(f.section),
+      (f) => {
+        // Drop legacy section keys that no longer exist in SUB_CALLS — they
+        // are dead entries from prior pipeline versions and should never be
+        // resurfaced (e.g. the old combined "contradictionsAdmissions").
+        if (!SUB_CALLS.some((s) => s.key === f.section)) return false;
+        // Drop entries we just retried (whether they succeeded or failed
+        // again — failures are re-added below from newFailures).
+        if (attemptedKeys.includes(f.section)) return false;
+        if (succeededKeys.includes(f.section)) return false;
+        return true;
+      },
     );
     const updatedFailures: FailedSection[] = [...remainingPrior, ...newFailures];
 
