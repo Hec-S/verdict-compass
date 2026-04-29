@@ -1102,6 +1102,102 @@ function WitnessesTab({
   );
 }
 
+/**
+ * Accident mechanism may have been stored as a string OR (legacy / mis-shaped
+ * model output) as an object like { defenseTheory, accidentMechanicsCites }.
+ * Extract a prose body and any citation array from either shape.
+ */
+function extractAccidentMechanism(value: unknown): { prose: string; cites: string[] } {
+  if (value == null) return { prose: "", cites: [] };
+  if (typeof value === "string") {
+    // Sometimes the string itself is JSON.
+    const trimmed = value.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        return extractAccidentMechanism(JSON.parse(trimmed));
+      } catch {
+        // fall through, treat as plain prose
+      }
+    }
+    return { prose: value, cites: [] };
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const proseKey = [
+      "defenseTheory",
+      "prose",
+      "narrative",
+      "summary",
+      "mechanism",
+      "accidentMechanism",
+      "text",
+    ].find((k) => typeof obj[k] === "string" && (obj[k] as string).length > 0);
+    const prose = proseKey ? (obj[proseKey] as string) : "";
+    const citeKey = Object.keys(obj).find(
+      (k) => /cite/i.test(k) && Array.isArray(obj[k]),
+    );
+    const cites = citeKey
+      ? ((obj[citeKey] as unknown[]).map((c) => safeText(c)).filter(Boolean) as string[])
+      : [];
+    if (prose || cites.length > 0) return { prose, cites };
+    // Fallback: stringify so we never silently drop content.
+    return { prose: safeText(value), cites: [] };
+  }
+  return { prose: safeText(value), cites: [] };
+}
+
+/**
+ * Pull (p.X lines Y-Z) style citations off the end of a string.
+ * Returns the prose with trailing cites stripped, plus the cite list.
+ */
+function splitProseAndCites(text: string): { prose: string; cites: string[] } {
+  if (!text) return { prose: "", cites: [] };
+  const citeRe = /\((?:p\.?|page)\s*\d+[^()]*\)/gi;
+  const cites: string[] = [];
+  // Collect trailing cites: keep stripping (...) cite-like groups from the end.
+  let prose = text.trim();
+  // Pull all cite-like matches anywhere; we'll keep them as a group at bottom
+  // but also leave inline ones in place. Strategy: only extract cites that are
+  // at the end of the string.
+  while (true) {
+    const m = prose.match(/\s*(\((?:p\.?|page)\s*\d+[^()]*\))\s*\.?\s*$/i);
+    if (!m) break;
+    cites.unshift(m[1]);
+    prose = prose.slice(0, m.index).trim();
+  }
+  // If no trailing cites were extracted, also try inline collection (don't strip).
+  if (cites.length === 0) {
+    const inline = text.match(citeRe);
+    if (inline) cites.push(...inline);
+  }
+  return { prose, cites };
+}
+
+/** Split prose into a bold headline (first sentence) and the remainder. */
+function splitHeadline(text: string): { headline: string; rest: string } {
+  if (!text) return { headline: "", rest: "" };
+  const m = text.match(/^([\s\S]*?[.!?])(\s+)([\s\S]+)$/);
+  if (!m) return { headline: text, rest: "" };
+  return { headline: m[1], rest: m[3] };
+}
+
+/** Render a baseline/sequela cell: prose on top, trailing cites in mono below. */
+function CellWithCite({ value }: { value: unknown }) {
+  const { prose, cites } = splitProseAndCites(safeText(value));
+  return (
+    <>
+      <div>{prose || safeText(value)}</div>
+      {cites.length > 0 && (
+        <div className="mt-2 font-mono text-[12px] text-muted-foreground space-y-0.5">
+          {cites.map((c, i) => (
+            <div key={i}>{c}</div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function CausationTab({
   data,
   isFailed,
