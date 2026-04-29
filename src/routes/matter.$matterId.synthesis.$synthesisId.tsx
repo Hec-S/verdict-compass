@@ -35,7 +35,7 @@ export const Route = createFileRoute(
   head: () => ({
     meta: [{ title: "Matter Synthesis — VerdictIQ" }],
   }),
-  validateSearch: (search: Record<string, unknown>): { tab: SynthesisTabId } => {
+  validateSearch: (search: Record<string, unknown>): { tab?: SynthesisTabId } => {
     const allowed: SynthesisTabId[] = [
       "overview",
       "witnesses",
