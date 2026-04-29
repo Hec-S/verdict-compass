@@ -109,6 +109,34 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Bordered card container used to visually separate major sections inside
+ * a synthesis tab. Renders an optional small uppercase label at the top
+ * (16px gap before content), 32px padding, 1px border, 8px radius.
+ */
+function SectionCard({
+  label,
+  children,
+  className = "",
+}: {
+  label?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`border border-border rounded-lg bg-card/40 p-8 print:break-inside-avoid ${className}`}
+    >
+      {label != null && (
+        <div className="mb-4">
+          <SectionLabel>{label}</SectionLabel>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 /** Larger pill/badge used for headline status (case strength, posture). */
 function HeadlinePill({
   tone,
