@@ -578,42 +578,105 @@ async function runSubSynthesis(
   }
 }
 
-export async function synthesizeStrategicOverview(
+export async function synthesizeExecSummary(
   apiKey: string,
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSectionInput(matter, cards, "strategicOverview");
-  const userMessage = `Produce the STRATEGIC OVERVIEW slice of the case-level defense synthesis.
+  const shared = buildSectionInput(matter, cards, "execSummary");
+  const userMessage = `Produce ONLY the EXECUTIVE SUMMARY for this matter. No other keys.
 
 ${shared}
 
-Return ONLY the following JSON keys and nothing else: execSummary, biasNarrative, trialThemes.
-
-Schema:
+Return ONLY this JSON shape:
 {
   "execSummary": {
     "defenseTheory": "2-3 sentences. State the operative defense theory grounded in this record (causation apportionment, credibility attack, methodology challenge, etc.). Do not produce a generic theory.",
-    "caseStrength": "strong|favorable|mixed|unfavorable|weak — your honest assessment.",
-    "strengthRationale": "",
-    "topThreats": [ "" ],
-    "topOpportunities": [ "" ],
+    "caseStrength": "strong|favorable|mixed|unfavorable|weak",
+    "strengthRationale": "2-3 sentences justifying the strength rating with specifics from the record.",
+    "topThreats": [ "specific threat with witness/cite, max 25 words" ],
+    "topOpportunities": [ "specific opportunity with witness/cite, max 25 words" ],
     "recommendedPosture": "trial|settle_low|settle_midrange|settle_high|more_discovery",
-    "postureRationale": "Be specific about the dollar range you have in mind given Nevada verdict patterns for the injury type at issue."
-  },
-  "biasNarrative": {
-    "pipelineMap": "Trace who referred whom in the order it happened. Tell the litigation-pipeline story as a narrative that could become an opening or closing argument.",
-    "financialRelationships": [ "" ],
-    "repeatPlayerPatterns": [ "" ],
-    "trialNarrative": ""
-  },
-  "trialThemes": [ { "theme": "", "supportingWitnesses": [ "" ], "supportingFacts": [ "" ], "voirDireAngle": "" } ]
+    "postureRationale": "Be specific about a dollar range tied to Nevada verdict patterns for the injury type at issue."
+  }
 }
 
-Constraints:
-- 3-5 trial themes maximum. Each must be supported by 3+ witnesses or 3+ specific facts.
-- Do not include any other top-level keys.`;
-  return runSubSynthesis(apiKey, "strategicOverview", userMessage, 3000);
+Rules:
+- topThreats: 3-5 items
+- topOpportunities: 3-5 items
+- Every claim must be grounded in the deposition cards
+- Do not include any other top-level keys`;
+  return runSubSynthesis(apiKey, "execSummary", userMessage, 2500);
+}
+
+export async function synthesizeBiasNarrative(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSectionInput(matter, cards, "biasNarrative");
+  const userMessage = `Produce ONLY the BIAS NARRATIVE for this matter. No other keys.
+
+${shared}
+
+Return ONLY this JSON shape:
+{
+  "biasNarrative": {
+    "pipelineMap": "Trace who referred whom in the order it happened. Tell the litigation-pipeline story as a narrative usable in opening/closing.",
+    "financialRelationships": [ "specific financial relationship with cite, max 30 words" ],
+    "repeatPlayerPatterns": [ "specific repeat-player pattern with cite, max 30 words" ],
+    "trialNarrative": "2-4 sentences delivering the bias story to a Nevada jury."
+  }
+}
+
+Rules:
+- financialRelationships: 3+ items if the record supports it
+- repeatPlayerPatterns: 2+ items
+- Ground every entry in the deposition cards' biasIndicators / methodologyIssues
+- Do not include any other top-level keys`;
+  return runSubSynthesis(apiKey, "biasNarrative", userMessage, 2000);
+}
+
+export async function synthesizeTrialThemes(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSectionInput(matter, cards, "trialThemes");
+  const userMessage = `From the deposition cards below, identify the 3-5 strongest defense trial themes for this matter. Each theme must be supported by at least 3 witnesses or 3 specific facts grounded in the record. Themes supported by only one witness do not belong here.
+
+Trial themes are the 3-5 sentences a defense attorney delivers in opening and closing — they tell the jury the story of why our client should win. They are NOT issue lists; they are narrative claims.
+
+Examples of strong defense trial themes for personal injury matters:
+- 'This case is about a 2014 injury, not a 2019 accident.'
+- 'Plaintiff's medical providers all work for plaintiff.'
+- 'The accident sped up what was already happening.'
+
+Return ONLY this JSON:
+{
+  "trialThemes": [
+    {
+      "theme": "one-sentence theme statement, max 20 words",
+      "supportingWitnesses": ["deponent name 1", "deponent name 2", "deponent name 3"],
+      "supportingFacts": [
+        "specific fact with cite, max 25 words",
+        "specific fact with cite, max 25 words",
+        "specific fact with cite, max 25 words"
+      ],
+      "voirDireAngle": "how to frame this theme during voir dire to prime the jury, max 30 words"
+    }
+  ]
+}
+
+Rules:
+- Return between 3 and 5 themes
+- Each theme must have at least 3 supporting witnesses listed by name
+- Each theme must have at least 3 supporting facts with cites
+- Themes must be defense narratives, not neutral observations
+- Do not produce trial themes that attack the plaintiff personally; produce themes that attack the gap between what the accident caused and what plaintiff's providers claim
+
+${shared}`;
+  return runSubSynthesis(apiKey, "trialThemes", userMessage, 2500);
 }
 
 export async function synthesizeWitnessThreats(
