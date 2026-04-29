@@ -81,6 +81,57 @@ function Badge({ tone, children }: { tone: string; children: React.ReactNode }) 
   );
 }
 
+/** Width-constrained container for tab content. */
+function TabContainer({
+  width = "narrow",
+  children,
+}: {
+  width?: "narrow" | "wide";
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`mx-auto w-full ${
+        width === "wide" ? "max-w-[1040px]" : "max-w-[760px]"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Small uppercase muted section label. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[12px] uppercase tracking-[0.08em] text-muted-foreground font-medium">
+      {children}
+    </div>
+  );
+}
+
+/** Larger pill/badge used for headline status (case strength, posture). */
+function HeadlinePill({
+  tone,
+  size = "default",
+  children,
+}: {
+  tone: string;
+  size?: "default" | "lg";
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center font-medium rounded-full ${
+        size === "lg"
+          ? "px-4 h-8 text-[13px]"
+          : "px-3 h-7 text-[12px]"
+      } ${tone}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 // ---------------- Tab config ----------------
 
 export type SynthesisTabId =
