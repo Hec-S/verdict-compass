@@ -1317,33 +1317,51 @@ function MethodologyTab({
       </TabContainer>
     );
   }
+  const ids = data.map((_, i) => `methodology-${i}`);
+  const collapse = useCollapsibleSet(ids);
   return (
     <TabContainer>
       <TabSectionHeader title="Methodology challenges" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">None identified.</p>
       ) : (
-        <div className="space-y-4">
-          {data.map((m, i) => (
-            <article key={i} className="border border-border p-5 print:break-inside-avoid">
-              <div className="flex items-start gap-2 mb-3 flex-wrap">
-                <span className="text-[16px] font-medium text-foreground">
-                  {safeText(m.targetWitness)}
-                </span>
-                <Badge tone="bg-foreground/10 text-foreground">{m.motionType}</Badge>
-                <Cite>{labelFor(m.caseId, m.targetWitness)}</Cite>
-              </div>
-              <p className="text-[16px] text-foreground/90 leading-relaxed">
-                {safeText(m.basis)}
-              </p>
-              {m.supportingCites && m.supportingCites.length > 0 && (
-                <pre className="mt-4 p-3 bg-muted/40 text-[12px] font-mono text-muted-foreground whitespace-pre-wrap break-words border border-border/50">
-                  {m.supportingCites.map((c) => safeText(c)).join("\n")}
-                </pre>
-              )}
-            </article>
-          ))}
-        </div>
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {data.map((m, i) => {
+              const id = ids[i];
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <>
+                      <span className="text-[16px] font-medium text-foreground">
+                        {safeText(m.targetWitness)}
+                      </span>
+                      <Badge tone="bg-foreground/10 text-foreground">{m.motionType}</Badge>
+                    </>
+                  }
+                  meta={<Cite>{labelFor(m.caseId, m.targetWitness)}</Cite>}
+                >
+                  <p className="text-[16px] text-foreground/90 leading-relaxed mt-2">
+                    {safeText(m.basis)}
+                  </p>
+                  {m.supportingCites && m.supportingCites.length > 0 && (
+                    <pre className="mt-4 p-3 bg-muted/40 text-[12px] font-mono text-muted-foreground whitespace-pre-wrap break-words border border-border/50">
+                      {m.supportingCites.map((c) => safeText(c)).join("\n")}
+                    </pre>
+                  )}
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
