@@ -589,7 +589,15 @@ export function MatterSynthesisView({
       {/* Active tab content (screen) */}
       <main className="print:hidden">
         <div className="px-6 py-12">
-          <div key={currentTab}>{renderTab(currentTab)}</div>
+          <div key={currentTab}>
+            {currentTab === "overview" ? (
+              renderTab(currentTab)
+            ) : (
+              <TabContainer width="wide">
+                <SectionCard>{renderTab(currentTab)}</SectionCard>
+              </TabContainer>
+            )}
+          </div>
         </div>
       </main>
 
