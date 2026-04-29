@@ -1243,37 +1243,52 @@ function MotionsTab({
     const pb = priorityRank[b.priority] ?? 3;
     return pa - pb;
   });
+  const ids = sorted.map((_, i) => `motion-${i}`);
+  const collapse = useCollapsibleSet(ids);
   return (
     <TabContainer>
       <TabSectionHeader title="Motions in limine" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">None recommended.</p>
       ) : (
-        <div className="space-y-4">
-          {sorted.map((m, i) => (
-            <article
-              key={i}
-              className="border border-border p-5 print:break-inside-avoid"
-            >
-              <div className="flex items-start gap-3 mb-3 flex-wrap">
-                <h3 className="flex-1 text-[16px] font-medium text-foreground">
-                  {safeText(m.motion)}
-                </h3>
-                <Badge tone={PRIORITY_TONE[m.priority] ?? PRIORITY_TONE.consider}>
-                  {m.priority.replace(/_/g, " ")}
-                </Badge>
-              </div>
-              <p className="text-[16px] text-foreground/90 leading-relaxed">
-                {safeText(m.basis)}
-              </p>
-              {m.supportingCites && m.supportingCites.length > 0 && (
-                <pre className="mt-4 p-3 bg-muted/40 text-[12px] font-mono text-muted-foreground whitespace-pre-wrap break-words border border-border/50">
-                  {m.supportingCites.map((c) => safeText(c)).join("\n")}
-                </pre>
-              )}
-            </article>
-          ))}
-        </div>
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {sorted.map((m, i) => {
+              const id = ids[i];
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <>
+                      <h3 className="flex-1 min-w-0 text-[16px] font-medium text-foreground">
+                        {safeText(m.motion)}
+                      </h3>
+                      <Badge tone={PRIORITY_TONE[m.priority] ?? PRIORITY_TONE.consider}>
+                        {m.priority.replace(/_/g, " ")}
+                      </Badge>
+                    </>
+                  }
+                >
+                  <p className="text-[16px] text-foreground/90 leading-relaxed mt-2">
+                    {safeText(m.basis)}
+                  </p>
+                  {m.supportingCites && m.supportingCites.length > 0 && (
+                    <pre className="mt-4 p-3 bg-muted/40 text-[12px] font-mono text-muted-foreground whitespace-pre-wrap break-words border border-border/50">
+                      {m.supportingCites.map((c) => safeText(c)).join("\n")}
+                    </pre>
+                  )}
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
