@@ -557,6 +557,7 @@ function MatterDetailPage() {
                         onRerun={() => setConfirmRetry(true)}
                         onRerunFailed={() => void rerunFailedSubCalls()}
                         rerunDisabled={retryingSynthesis || synthRunning}
+                        embedded
                       />
                     </ErrorBoundary>
                   </div>
