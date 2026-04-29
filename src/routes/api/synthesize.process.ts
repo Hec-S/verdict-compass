@@ -1170,13 +1170,18 @@ interface SubCall {
 }
 
 const SUB_CALLS: SubCall[] = [
-  { key: "strategicOverview", label: "Strategic Overview", progress: 87, message: "Synthesizing strategic overview", resultKeys: ["execSummary", "biasNarrative", "trialThemes"], fn: synthesizeStrategicOverview },
-  { key: "witnessThreats", label: "Witness Threat Ranking", progress: 89, message: "Ranking witness threats", resultKeys: ["witnessThreatRanking"], fn: synthesizeWitnessThreats },
+  { key: "execSummary", label: "Executive Summary", progress: 86, message: "Synthesizing executive summary", resultKeys: ["execSummary"], fn: synthesizeExecSummary },
+  { key: "biasNarrative", label: "Bias Narrative", progress: 87, message: "Building bias narrative", resultKeys: ["biasNarrative"], fn: synthesizeBiasNarrative },
+  { key: "trialThemes", label: "Trial Themes", progress: 88, message: "Identifying trial themes", resultKeys: ["trialThemes"], fn: synthesizeTrialThemes },
+  { key: "witnessThreats", label: "Witness Threats", progress: 90, message: "Ranking witness threats", resultKeys: ["witnessThreatRanking"], fn: synthesizeWitnessThreats },
   { key: "contradictions", label: "Contradictions", progress: 91, message: "Mapping contradictions", resultKeys: ["contradictionMatrix"], fn: synthesizeContradictions },
-  { key: "admissionsInventory", label: "Admissions Inventory", progress: 93, message: "Building admissions inventory", resultKeys: ["unifiedAdmissionsInventory"], fn: synthesizeAdmissionsInventory },
-  { key: "causationMethodology", label: "Causation & Methodology", progress: 94, message: "Building causation and methodology challenges", resultKeys: ["causationAnalysis", "methodologyChallenges"], fn: synthesizeCausationAndMethodology },
-  { key: "motionsDiscovery", label: "Motions & Discovery", progress: 96, message: "Drafting motions and discovery roadmap", resultKeys: ["motionsInLimine", "discoveryGaps"], fn: synthesizeMotionsAndDiscovery },
-  { key: "retrospective", label: "Retrospective", progress: 98, message: "Identifying missed opportunities and next steps", resultKeys: ["whatWeMessedUp", "whatToDoNext"], fn: synthesizeRetrospective },
+  { key: "admissionsInventory", label: "Admissions Inventory", progress: 92, message: "Building admissions inventory", resultKeys: ["unifiedAdmissionsInventory"], fn: synthesizeAdmissionsInventory },
+  { key: "causationAnalysis", label: "Causation Analysis", progress: 93, message: "Analyzing causation", resultKeys: ["causationAnalysis"], fn: synthesizeCausationAnalysis },
+  { key: "methodologyChallenges", label: "Methodology Challenges", progress: 94, message: "Identifying methodology challenges", resultKeys: ["methodologyChallenges"], fn: synthesizeMethodologyChallenges },
+  { key: "motionsInLimine", label: "Motions in Limine", progress: 95, message: "Drafting motions in limine", resultKeys: ["motionsInLimine"], fn: synthesizeMotionsInLimine },
+  { key: "discoveryGaps", label: "Discovery Gaps", progress: 96, message: "Identifying discovery gaps", resultKeys: ["discoveryGaps"], fn: synthesizeDiscoveryGaps },
+  { key: "whatWeMessedUp", label: "Missed Opportunities", progress: 97, message: "Identifying missed opportunities", resultKeys: ["whatWeMessedUp"], fn: synthesizeWhatWeMessedUp },
+  { key: "whatToDoNext", label: "Next Steps", progress: 98, message: "Building action list", resultKeys: ["whatToDoNext"], fn: synthesizeWhatToDoNext },
 ];
 
 export async function synthesizeMatter(
