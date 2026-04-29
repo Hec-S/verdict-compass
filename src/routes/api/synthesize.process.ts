@@ -712,7 +712,8 @@ interface SubCall {
 const SUB_CALLS: SubCall[] = [
   { key: "strategicOverview", label: "Strategic Overview", progress: 87, message: "Synthesizing strategic overview", resultKeys: ["execSummary", "biasNarrative", "trialThemes"], fn: synthesizeStrategicOverview },
   { key: "witnessThreats", label: "Witness Threat Ranking", progress: 89, message: "Ranking witness threats", resultKeys: ["witnessThreatRanking"], fn: synthesizeWitnessThreats },
-  { key: "contradictionsAdmissions", label: "Contradictions & Admissions", progress: 92, message: "Mapping contradictions and admissions", resultKeys: ["contradictionMatrix", "unifiedAdmissionsInventory"], fn: synthesizeContradictionsAndAdmissions },
+  { key: "contradictions", label: "Contradictions", progress: 91, message: "Mapping contradictions", resultKeys: ["contradictionMatrix"], fn: synthesizeContradictions },
+  { key: "admissionsInventory", label: "Admissions Inventory", progress: 93, message: "Building admissions inventory", resultKeys: ["unifiedAdmissionsInventory"], fn: synthesizeAdmissionsInventory },
   { key: "causationMethodology", label: "Causation & Methodology", progress: 94, message: "Building causation and methodology challenges", resultKeys: ["causationAnalysis", "methodologyChallenges"], fn: synthesizeCausationAndMethodology },
   { key: "motionsDiscovery", label: "Motions & Discovery", progress: 96, message: "Drafting motions and discovery roadmap", resultKeys: ["motionsInLimine", "discoveryGaps"], fn: synthesizeMotionsAndDiscovery },
   { key: "retrospective", label: "Retrospective", progress: 98, message: "Identifying missed opportunities and next steps", resultKeys: ["whatWeMessedUp", "whatToDoNext"], fn: synthesizeRetrospective },
