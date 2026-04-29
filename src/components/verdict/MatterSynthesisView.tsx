@@ -81,6 +81,57 @@ function Badge({ tone, children }: { tone: string; children: React.ReactNode }) 
   );
 }
 
+/** Width-constrained container for tab content. */
+function TabContainer({
+  width = "narrow",
+  children,
+}: {
+  width?: "narrow" | "wide";
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`mx-auto w-full ${
+        width === "wide" ? "max-w-[1040px]" : "max-w-[760px]"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Small uppercase muted section label. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[12px] uppercase tracking-[0.08em] text-muted-foreground font-medium">
+      {children}
+    </div>
+  );
+}
+
+/** Larger pill/badge used for headline status (case strength, posture). */
+function HeadlinePill({
+  tone,
+  size = "default",
+  children,
+}: {
+  tone: string;
+  size?: "default" | "lg";
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center font-medium rounded-full ${
+        size === "lg"
+          ? "px-4 h-8 text-[13px]"
+          : "px-3 h-7 text-[12px]"
+      } ${tone}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 // ---------------- Tab config ----------------
 
 export type SynthesisTabId =
@@ -511,7 +562,7 @@ export function MatterSynthesisView({
 
       {/* Active tab content (screen) */}
       <main className="print:hidden">
-        <div className="max-w-[1100px] mx-auto py-10">
+        <div className="px-6 py-12">
           <div key={currentTab}>{renderTab(currentTab)}</div>
         </div>
       </main>
@@ -573,107 +624,135 @@ function OverviewTab({
 }) {
   if (isFailed) {
     return (
-      <>
-        <TabSectionHeader title="Overview" />
+      <TabContainer>
         <UnavailableInline subCallKey="strategicOverview" onRerunFailed={onRerunFailed} block />
-      </>
+      </TabContainer>
+    );
+  }
+
+  const STRENGTH_HEADLINE_TONE: Record<
+    CaseSynthesis["execSummary"]["caseStrength"],
+    string
+  > = {
+    strong: "bg-emerald-600 text-white",
+    favorable: "bg-emerald-600 text-white",
+    mixed: "bg-amber-500 text-white",
+    unfavorable: "bg-orange-600 text-white",
+    weak: "bg-red-600 text-white",
+  };
+
+  return (
+    <>
+      {/* Single-column upper sections */}
+      <TabContainer>
+        {/* Defense theory */}
+        <section>
+          <SectionLabel>Defense theory</SectionLabel>
+          <p className="mt-4 text-[18px] leading-[1.6] text-foreground">
+            {safeText(exec.defenseTheory) || "No defense theory produced."}
+          </p>
+        </section>
+
+        {/* Case strength */}
+        <section className="mt-16">
+          <SectionLabel>Case strength</SectionLabel>
+          <div className="mt-4">
+            <HeadlinePill
+              tone={STRENGTH_HEADLINE_TONE[exec.caseStrength]}
+              size="default"
+            >
+              {STRENGTH_LABEL[exec.caseStrength]}
+            </HeadlinePill>
+          </div>
+          {exec.strengthRationale && (
+            <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
+              {safeText(exec.strengthRationale)}
+            </p>
+          )}
+        </section>
+
+        {/* Recommended posture */}
+        <section className="mt-16">
+          <SectionLabel>Recommended posture</SectionLabel>
+          <div className="mt-4">
+            <HeadlinePill tone="bg-foreground text-background" size="lg">
+              {POSTURE_LABEL[exec.recommendedPosture]}
+            </HeadlinePill>
+          </div>
+          {exec.postureRationale && (
+            <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
+              {safeText(exec.postureRationale)}
+            </p>
+          )}
+        </section>
+      </TabContainer>
+
+      {/* Two-column threats / opportunities — wider container */}
+      <TabContainer width="wide">
+        <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
+          <NumberedEditorialList
+            label="Top threats"
+            items={exec.topThreats.map((t) => safeText(t))}
+            emptyText="None identified."
+          />
+          <NumberedEditorialList
+            label="Top opportunities"
+            items={exec.topOpportunities.map((t) => safeText(t))}
+            emptyText="None identified."
+          />
+        </div>
+      </TabContainer>
+    </>
+  );
+}
+
+/**
+ * Clean numbered editorial list — large muted number + headline first
+ * sentence + explanation. Items separated by a 1px divider.
+ */
+function NumberedEditorialList({
+  label,
+  items,
+  emptyText,
+}: {
+  label: string;
+  items: string[];
+  emptyText: string;
+}) {
+  if (items.length === 0) {
+    return (
+      <div>
+        <SectionLabel>{label}</SectionLabel>
+        <p className="mt-4 text-[14px] text-muted-foreground italic">{emptyText}</p>
+      </div>
     );
   }
   return (
     <div>
-      {/* Defense theory hero */}
-      <div className="mb-12">
-        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-4">
-          Defense theory
-        </div>
-        <p className="text-[20px] leading-[1.55] text-foreground max-w-[68ch]">
-          {safeText(exec.defenseTheory) || "No defense theory produced."}
-        </p>
-      </div>
-
-      {/* Strength + posture */}
-      <div className="space-y-6 mb-12">
-        <div className="flex items-start gap-4 flex-wrap">
-          <div className="w-[180px] shrink-0">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-              Case strength
-            </div>
-            <Badge tone={STRENGTH_TONE[exec.caseStrength]}>
-              {STRENGTH_LABEL[exec.caseStrength]}
-            </Badge>
-          </div>
-          {exec.strengthRationale && (
-            <p className="flex-1 min-w-[260px] text-[16px] text-foreground/85 leading-relaxed">
-              {safeText(exec.strengthRationale)}
-            </p>
-          )}
-        </div>
-        <div className="flex items-start gap-4 flex-wrap">
-          <div className="w-[180px] shrink-0">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-              Recommended posture
-            </div>
-            <Badge tone="bg-foreground text-background">
-              {POSTURE_LABEL[exec.recommendedPosture]}
-            </Badge>
-          </div>
-          {exec.postureRationale && (
-            <p className="flex-1 min-w-[260px] text-[16px] text-foreground/85 leading-relaxed">
-              {safeText(exec.postureRationale)}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Threats / Opportunities */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-            Top threats
-          </div>
-          <ol className="space-y-3">
-            {exec.topThreats.length === 0 && (
-              <li className="text-[14px] text-muted-foreground italic">None identified.</li>
-            )}
-            {exec.topThreats.map((t, i) => (
-              <li
-                key={i}
-                className="border border-red-500/25 bg-red-500/[0.04] p-4 flex gap-3"
-              >
-                <span className="text-red-700 dark:text-red-400 font-medium tabular-nums shrink-0 text-[14px]">
-                  {i + 1}.
-                </span>
-                <div className="text-[15px] text-foreground/90 leading-relaxed">
-                  {safeText(t)}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-            Top opportunities
-          </div>
-          <ol className="space-y-3">
-            {exec.topOpportunities.length === 0 && (
-              <li className="text-[14px] text-muted-foreground italic">None identified.</li>
-            )}
-            {exec.topOpportunities.map((t, i) => (
-              <li
-                key={i}
-                className="border border-emerald-500/25 bg-emerald-500/[0.04] p-4 flex gap-3"
-              >
-                <span className="text-emerald-700 dark:text-emerald-400 font-medium tabular-nums shrink-0 text-[14px]">
-                  {i + 1}.
-                </span>
-                <div className="text-[15px] text-foreground/90 leading-relaxed">
-                  {safeText(t)}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </div>
+      <SectionLabel>{label}</SectionLabel>
+      <ol className="mt-4">
+        {items.map((text, i) => {
+          const last = i === items.length - 1;
+          // Split into headline (first sentence/clause) + remainder.
+          const match = text.match(/^([^.!?—–-]+[.!?]?)(\s+)([\s\S]*)$/);
+          const headline = match ? match[1].trim() : text;
+          const remainder = match ? match[3].trim() : "";
+          return (
+            <li
+              key={i}
+              className={`flex gap-5 pb-6 ${last ? "" : "mb-6 border-b border-border"}`}
+            >
+              <span className="text-[24px] leading-[1.2] tabular-nums text-muted-foreground shrink-0 w-8">
+                {i + 1}
+              </span>
+              <div className="flex-1 min-w-0 text-[15px] leading-[1.5] text-foreground">
+                <span className="font-medium">{headline}</span>
+                {remainder ? <span className="text-foreground/85"> {remainder}</span> : null}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
@@ -726,10 +805,10 @@ function WitnessesTab({
 
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Witness threat ranking" />
         <UnavailableInline subCallKey="witnessThreats" onRerunFailed={onRerunFailed} block />
-      </>
+      </TabContainer>
     );
   }
 
@@ -745,7 +824,7 @@ function WitnessesTab({
   ];
 
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Witness threat ranking" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No witnesses ranked.</p>
@@ -777,9 +856,7 @@ function WitnessesTab({
                 <article
                   key={`${w.caseId}-${i}`}
                   className={`border p-5 print:break-inside-avoid ${
-                    top
-                      ? "border-foreground/40 bg-foreground/[0.02]"
-                      : "border-border"
+                    top ? "border-foreground/50" : "border-border"
                   }`}
                 >
                   <div className="flex items-start gap-5">
@@ -844,7 +921,7 @@ function WitnessesTab({
           </div>
         </>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -859,22 +936,22 @@ function CausationTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Causation analysis" />
         <UnavailableInline
           subCallKey="causationMethodology"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer width="wide">
       <TabSectionHeader title="Causation analysis" />
-      <div className="space-y-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="border border-border p-5">
+      <div className="space-y-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
               Baseline conditions
             </div>
@@ -893,7 +970,7 @@ function CausationTab({
               ))}
             </ul>
           </div>
-          <div className="border border-border p-5">
+          <div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
               Prior accident sequelae
             </div>
@@ -914,17 +991,17 @@ function CausationTab({
           </div>
         </div>
         {data.accidentMechanism && (
-          <div>
+          <div className="max-w-[760px]">
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
               Accident mechanism
             </div>
-            <p className="text-[16px] text-foreground/90 leading-relaxed">
+            <p className="text-[16px] leading-[1.6] text-foreground">
               {safeText(data.accidentMechanism)}
             </p>
           </div>
         )}
         {data.apportionmentArguments.length > 0 && (
-          <div>
+          <div className="max-w-[760px]">
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
               Apportionment arguments
             </div>
@@ -932,7 +1009,7 @@ function CausationTab({
               {data.apportionmentArguments.map((a, i) => (
                 <li
                   key={i}
-                  className="text-[16px] text-foreground/90 flex gap-3 leading-relaxed"
+                  className="text-[16px] text-foreground flex gap-3 leading-[1.6]"
                 >
                   <span className="text-muted-foreground tabular-nums shrink-0">
                     {i + 1}.
@@ -944,17 +1021,17 @@ function CausationTab({
           </div>
         )}
         {data.weakestCausationLink && (
-          <div className="border-l-4 border-foreground bg-foreground/[0.03] pl-5 pr-4 py-4">
+          <div className="max-w-[760px] border-l-4 border-foreground bg-foreground/[0.03] pl-5 pr-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
               Weakest causation link
             </div>
-            <p className="text-[17px] text-foreground leading-relaxed font-medium">
+            <p className="text-[17px] text-foreground leading-[1.6] font-medium">
               {safeText(data.weakestCausationLink)}
             </p>
           </div>
         )}
       </div>
-    </>
+    </TabContainer>
   );
 }
 
@@ -969,14 +1046,14 @@ function MotionsTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Motions in limine" />
         <UnavailableInline
           subCallKey="motionsDiscovery"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   const priorityRank: Record<string, number> = {
@@ -990,7 +1067,7 @@ function MotionsTab({
     return pa - pb;
   });
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Motions in limine" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">None recommended.</p>
@@ -1021,7 +1098,7 @@ function MotionsTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1038,18 +1115,18 @@ function MethodologyTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Methodology challenges" />
         <UnavailableInline
           subCallKey="causationMethodology"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Methodology challenges" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">None identified.</p>
@@ -1076,7 +1153,7 @@ function MethodologyTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1091,18 +1168,18 @@ function ContradictionsTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Contradiction matrix" />
         <UnavailableInline
           subCallKey="contradictionsAdmissions"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Contradiction matrix" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">
@@ -1165,7 +1242,7 @@ function ContradictionsTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1180,18 +1257,18 @@ function AdmissionsTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Unified admissions inventory" />
         <UnavailableInline
           subCallKey="contradictionsAdmissions"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Unified admissions inventory" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No admissions inventoried.</p>
@@ -1223,7 +1300,7 @@ function AdmissionsTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1238,20 +1315,20 @@ function BiasTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Bias narrative" />
         <UnavailableInline
           subCallKey="strategicOverview"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Bias narrative" />
-      <div className="space-y-8 max-w-[68ch]">
+      <div className="space-y-12">
         {data.pipelineMap && (
           <div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
@@ -1311,7 +1388,7 @@ function BiasTab({
           </div>
         )}
       </div>
-    </>
+    </TabContainer>
   );
 }
 
@@ -1326,18 +1403,18 @@ function ThemesTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Trial themes" />
         <UnavailableInline
           subCallKey="strategicOverview"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Trial themes" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No themes identified.</p>
@@ -1397,7 +1474,7 @@ function ThemesTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1412,18 +1489,18 @@ function DiscoveryGapsTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Discovery gaps" />
         <UnavailableInline
           subCallKey="motionsDiscovery"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Discovery gaps" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No gaps identified.</p>
@@ -1455,7 +1532,7 @@ function DiscoveryGapsTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1470,14 +1547,14 @@ function MissedTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="What we missed" />
         <UnavailableInline
           subCallKey="retrospective"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   const sorted = data.slice().sort((a, b) => {
@@ -1487,7 +1564,7 @@ function MissedTab({
     return a.canStillFix ? -1 : 1;
   });
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="What we missed" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">Nothing flagged.</p>
@@ -1542,7 +1619,7 @@ function MissedTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1557,14 +1634,14 @@ function NextTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="What to do next" />
         <UnavailableInline
           subCallKey="retrospective"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   const groups: Array<{
@@ -1593,7 +1670,7 @@ function NextTab({
     },
   ];
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="What to do next" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No actions queued.</p>
@@ -1632,6 +1709,6 @@ function NextTab({
           })}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
