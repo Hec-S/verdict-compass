@@ -402,31 +402,125 @@ Rank EVERY deponent by how dangerous they are to the defense at trial. rank=1 is
   return runSubSynthesis(apiKey, "witnessThreats", userMessage, 4000);
 }
 
-export async function synthesizeContradictionsAndAdmissions(
+export async function synthesizeContradictions(
   apiKey: string,
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
   const shared = buildSharedInput(matter, cards);
-  const userMessage = `Produce the CONTRADICTIONS AND ADMISSIONS slice of the case-level defense synthesis.
+  const userMessage = `From the deposition cards below, identify every meaningful contradiction across witnesses where two or more witnesses gave incompatible testimony on the same factual point. Return ONLY this JSON shape with no other content:
 
-${shared}
-
-Return ONLY the following JSON keys and nothing else: contradictionMatrix, unifiedAdmissionsInventory.
-
-Schema:
 {
   "contradictionMatrix": [
-    { "topic": "", "witnesses": [ { "caseId": "", "deponentName": "", "position": "", "cite": "" } ], "exploitability": "high|medium|low", "defenseUse": "" }
-  ],
-  "unifiedAdmissionsInventory": [
-    { "topic": "", "admissions": [ { "caseId": "", "deponentName": "", "admission": "", "cite": "" } ], "trialUse": "" }
+    {
+      "topic": "short topic label, max 8 words",
+      "witnesses": [
+        {"caseId": "<id>", "deponentName": "<name>", "position": "<what they said, max 30 words>", "cite": "<page/line cite>"}
+      ],
+      "exploitability": "high|medium|low",
+      "defenseUse": "how defense uses this contradiction at trial, max 40 words"
+    }
   ]
 }
 
-contradictionMatrix: identify every meaningful contradiction across witnesses.
-unifiedAdmissionsInventory: group admissions by topic, not by witness. The most powerful admissions are supported by multiple witnesses.`;
-  return runSubSynthesis(apiKey, "contradictionsAdmissions", userMessage, 4000);
+Rules:
+- Return at most 8 contradictions, prioritized by exploitability
+- Each contradiction must have at least 2 witnesses
+- Each position must be 30 words or less
+- Each defenseUse must be 40 words or less
+- If you cannot find any meaningful contradictions, return an empty array. Do not invent contradictions to fill the array.
+
+${shared}`;
+
+  console.log(
+    `[CONTRADICTIONS] starting, sending ${userMessage.length} chars to Claude`,
+  );
+  const t = Date.now();
+  let raw: string;
+  try {
+    raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, 3000);
+  } catch (err) {
+    console.error(
+      `[CONTRADICTIONS] Claude call failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    throw err;
+  }
+  console.log(
+    `[CONTRADICTIONS] received response, length=${raw.length} (in ${Date.now() - t}ms)`,
+  );
+  console.log(`[CONTRADICTIONS] first 500 chars of response: ${raw.slice(0, 500)}`);
+  console.log(`[CONTRADICTIONS] last 500 chars of response: ${raw.slice(-500)}`);
+  console.log(`[CONTRADICTIONS] parse attempt...`);
+  try {
+    const parsed = extractJSON(raw, "sub:contradictions");
+    console.log(`[CONTRADICTIONS] parsed successfully`);
+    return parsed;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[CONTRADICTIONS] parse failed: ${msg}`);
+    throw new Error(`Contradictions parse failed: ${msg}`);
+  }
+}
+
+export async function synthesizeAdmissionsInventory(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSharedInput(matter, cards);
+  const userMessage = `From the deposition cards below, build a topic-grouped inventory of admissions that defense can use at trial. Group admissions by topic, not by witness. Topics with multi-witness support are highest priority. Return ONLY this JSON shape with no other content:
+
+{
+  "unifiedAdmissionsInventory": [
+    {
+      "topic": "specific topic label, max 10 words (e.g. 'Pre-existing L5-S1 fusion (2014)')",
+      "admissions": [
+        {"caseId": "<id>", "deponentName": "<name>", "admission": "<what they admitted, max 30 words>", "cite": "<page/line cite>"}
+      ],
+      "trialUse": "how to deploy this admission at trial, max 40 words"
+    }
+  ]
+}
+
+Rules:
+- Return at most 12 admission topics, prioritized by multi-witness support
+- Each admission entry must be 30 words or less
+- Each trialUse must be 40 words or less
+- Topics supported by 3+ witnesses come first
+- If you cannot find substantive admissions, return an empty array. Do not invent admissions to fill the array.
+
+${shared}`;
+
+  console.log(
+    `[ADMISSIONS] starting, sending ${userMessage.length} chars to Claude`,
+  );
+  const t = Date.now();
+  let raw: string;
+  try {
+    raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, 3000);
+  } catch (err) {
+    console.error(
+      `[ADMISSIONS] Claude call failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    throw err;
+  }
+  console.log(
+    `[ADMISSIONS] received response, length=${raw.length} (in ${Date.now() - t}ms)`,
+  );
+  console.log(`[ADMISSIONS] first 500 chars of response: ${raw.slice(0, 500)}`);
+  console.log(`[ADMISSIONS] last 500 chars of response: ${raw.slice(-500)}`);
+  console.log(`[ADMISSIONS] parse attempt...`);
+  try {
+    const parsed = extractJSON(raw, "sub:admissionsInventory");
+    console.log(`[ADMISSIONS] parsed successfully`);
+    return parsed;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[ADMISSIONS] parse failed: ${msg}`);
+    throw new Error(`Admissions inventory parse failed: ${msg}`);
+  }
 }
 
 export async function synthesizeCausationAndMethodology(
