@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { RefreshCw, AlertTriangle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { RefreshCw, AlertTriangle, ChevronDown } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -134,6 +134,121 @@ function SectionCard({
       )}
       {children}
     </div>
+  );
+}
+
+/**
+ * Hook that manages an expand/collapse set keyed by string id.
+ * Provides toggle, isOpen, expandAll, collapseAll, and a count of open items.
+ */
+function useCollapsibleSet(allKeys: string[]) {
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const isOpen = (k: string) => open.has(k);
+  const toggle = (k: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  const expandAll = () => setOpen(new Set(allKeys));
+  const collapseAll = () => setOpen(new Set());
+  const setOnly = (k: string) => setOpen(new Set([k]));
+  return { isOpen, toggle, expandAll, collapseAll, setOnly, openCount: open.size };
+}
+
+/** Small text-style buttons for "Expand all" / "Collapse all". */
+function ExpandCollapseControls({
+  onExpandAll,
+  onCollapseAll,
+}: {
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 mb-4 print:hidden justify-end">
+      <button
+        type="button"
+        onClick={onExpandAll}
+        className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Expand all
+      </button>
+      <span className="text-muted-foreground/40">·</span>
+      <button
+        type="button"
+        onClick={onCollapseAll}
+        className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Collapse all
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Collapsible card with always-visible header (rank/title + meta) and an
+ * animated body. Click anywhere on the header toggles expand/collapse.
+ */
+function CollapsibleCard({
+  id,
+  open,
+  onToggle,
+  rank,
+  header,
+  meta,
+  emphasis = false,
+  children,
+}: {
+  id?: string;
+  open: boolean;
+  onToggle: () => void;
+  rank?: React.ReactNode;
+  header: React.ReactNode;
+  meta?: React.ReactNode;
+  emphasis?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <article
+      id={id}
+      className={`border rounded-lg print:break-inside-avoid ${
+        emphasis ? "border-foreground/50" : "border-border"
+      } ${open ? "bg-card/40" : ""}`}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-foreground/[0.03] transition-colors rounded-lg"
+      >
+        {rank !== undefined && (
+          <span className="shrink-0 tabular-nums text-[24px] leading-none text-muted-foreground font-medium w-9">
+            {rank}
+          </span>
+        )}
+        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+          {header}
+        </div>
+        {meta && <div className="shrink-0 hidden md:flex items-center gap-2">{meta}</div>}
+        <ChevronDown
+          size={18}
+          className={`shrink-0 text-muted-foreground transition-transform duration-200 ${
+            open ? "rotate-180" : ""
+          }`}
+          aria-hidden="true"
+        />
+      </button>
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 ease-out print:!grid-rows-[1fr] ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="px-5 pb-5 pt-1 border-t border-border/60">{children}</div>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -840,6 +955,28 @@ function WitnessesTab({
 }) {
   const [filter, setFilter] = useState<"all" | "high" | "medium" | "low">("all");
 
+  const sortedAll = useMemo(
+    () => data.slice().sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99)),
+    [data],
+  );
+  const idFor = (i: number) => `witness-${i + 1}`;
+  const allIds = useMemo(() => sortedAll.map((_, i) => idFor(i)), [sortedAll]);
+  const collapse = useCollapsibleSet(allIds);
+
+  // Auto-expand from URL hash on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (hash && allIds.includes(hash)) {
+      collapse.setOnly(hash);
+      // Defer scroll to next frame so the DOM has the id mounted.
+      requestAnimationFrame(() => {
+        document.getElementById(hash)?.scrollIntoView({ block: "start" });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allIds.join("|")]);
+
   if (isFailed) {
     return (
       <TabContainer>
@@ -849,9 +986,12 @@ function WitnessesTab({
     );
   }
 
-  const sorted = data.slice().sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
   const filtered =
-    filter === "all" ? sorted : sorted.filter((w) => w.threatLevel === filter);
+    filter === "all"
+      ? sortedAll.map((w, i) => ({ w, i }))
+      : sortedAll
+          .map((w, i) => ({ w, i }))
+          .filter(({ w }) => w.threatLevel === filter);
 
   const filters: Array<{ id: typeof filter; label: string }> = [
     { id: "all", label: "All" },
@@ -886,68 +1026,68 @@ function WitnessesTab({
               </button>
             ))}
           </div>
-          <div className="space-y-4">
-            {filtered.map((w, i) => {
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {filtered.map(({ w, i }) => {
               const top = (w.rank ?? i + 1) === 1;
+              const id = idFor(i);
               return (
-                <article
+                <CollapsibleCard
                   key={`${w.caseId}-${i}`}
-                  className={`border p-5 print:break-inside-avoid ${
-                    top ? "border-foreground/50" : "border-border"
-                  }`}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => {
+                    collapse.toggle(id);
+                    if (typeof window !== "undefined") {
+                      const becomingOpen = !collapse.isOpen(id);
+                      if (becomingOpen) {
+                        history.replaceState(null, "", `#${id}`);
+                      }
+                    }
+                  }}
+                  emphasis={top}
+                  rank={w.rank}
+                  header={
+                    <>
+                      <h3 className="text-[16px] font-medium text-foreground truncate">
+                        {w.deponentName}
+                      </h3>
+                      <Badge tone={THREAT_TONE[w.threatLevel] ?? THREAT_TONE.medium}>
+                        {w.threatLevel} threat
+                      </Badge>
+                    </>
+                  }
+                  meta={<Cite>{labelFor(w.caseId, w.deponentName)}</Cite>}
                 >
-                  <div className="flex items-start gap-5">
-                    <div
-                      className={`shrink-0 tabular-nums text-foreground/80 ${
-                        top
-                          ? "text-[40px] font-semibold leading-none"
-                          : "text-[28px] font-medium leading-none"
-                      }`}
-                    >
-                      {w.rank}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-2">
-                        <h3
-                          className={`font-medium text-foreground ${
-                            top ? "text-[18px]" : "text-[16px]"
-                          }`}
-                        >
-                          {w.deponentName}
-                        </h3>
-                        <Badge tone={THREAT_TONE[w.threatLevel] ?? THREAT_TONE.medium}>
-                          {w.threatLevel} threat
-                        </Badge>
-                        <Cite>{labelFor(w.caseId, w.deponentName)}</Cite>
+                  {w.summary && (
+                    <p className="text-[16px] text-foreground/90 leading-relaxed mb-3 mt-2">
+                      {safeText(w.summary)}
+                    </p>
+                  )}
+                  {w.crossPriorities && w.crossPriorities.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-2">
+                        Cross priorities
                       </div>
-                      {w.summary && (
-                        <p className="text-[16px] text-foreground/90 leading-relaxed mb-3">
-                          {safeText(w.summary)}
-                        </p>
-                      )}
-                      {w.crossPriorities && w.crossPriorities.length > 0 && (
-                        <div className="mt-3">
-                          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-2">
-                            Cross priorities
-                          </div>
-                          <ol className="space-y-2 list-none">
-                            {w.crossPriorities.map((cp, j) => (
-                              <li
-                                key={j}
-                                className="text-[15px] text-foreground/90 leading-relaxed flex gap-3"
-                              >
-                                <span className="text-muted-foreground tabular-nums shrink-0">
-                                  {j + 1}.
-                                </span>
-                                <span>{safeText(cp)}</span>
-                              </li>
-                            ))}
-                          </ol>
-                        </div>
-                      )}
+                      <ol className="space-y-2 list-none">
+                        {w.crossPriorities.map((cp, j) => (
+                          <li
+                            key={j}
+                            className="text-[15px] text-foreground/90 leading-relaxed flex gap-3"
+                          >
+                            <span className="text-muted-foreground tabular-nums shrink-0">
+                              {j + 1}.
+                            </span>
+                            <span>{safeText(cp)}</span>
+                          </li>
+                        ))}
+                      </ol>
                     </div>
-                  </div>
-                </article>
+                  )}
+                </CollapsibleCard>
               );
             })}
             {filtered.length === 0 && (
@@ -1103,37 +1243,52 @@ function MotionsTab({
     const pb = priorityRank[b.priority] ?? 3;
     return pa - pb;
   });
+  const ids = sorted.map((_, i) => `motion-${i}`);
+  const collapse = useCollapsibleSet(ids);
   return (
     <TabContainer>
       <TabSectionHeader title="Motions in limine" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">None recommended.</p>
       ) : (
-        <div className="space-y-4">
-          {sorted.map((m, i) => (
-            <article
-              key={i}
-              className="border border-border p-5 print:break-inside-avoid"
-            >
-              <div className="flex items-start gap-3 mb-3 flex-wrap">
-                <h3 className="flex-1 text-[16px] font-medium text-foreground">
-                  {safeText(m.motion)}
-                </h3>
-                <Badge tone={PRIORITY_TONE[m.priority] ?? PRIORITY_TONE.consider}>
-                  {m.priority.replace(/_/g, " ")}
-                </Badge>
-              </div>
-              <p className="text-[16px] text-foreground/90 leading-relaxed">
-                {safeText(m.basis)}
-              </p>
-              {m.supportingCites && m.supportingCites.length > 0 && (
-                <pre className="mt-4 p-3 bg-muted/40 text-[12px] font-mono text-muted-foreground whitespace-pre-wrap break-words border border-border/50">
-                  {m.supportingCites.map((c) => safeText(c)).join("\n")}
-                </pre>
-              )}
-            </article>
-          ))}
-        </div>
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {sorted.map((m, i) => {
+              const id = ids[i];
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <>
+                      <h3 className="flex-1 min-w-0 text-[16px] font-medium text-foreground">
+                        {safeText(m.motion)}
+                      </h3>
+                      <Badge tone={PRIORITY_TONE[m.priority] ?? PRIORITY_TONE.consider}>
+                        {m.priority.replace(/_/g, " ")}
+                      </Badge>
+                    </>
+                  }
+                >
+                  <p className="text-[16px] text-foreground/90 leading-relaxed mt-2">
+                    {safeText(m.basis)}
+                  </p>
+                  {m.supportingCites && m.supportingCites.length > 0 && (
+                    <pre className="mt-4 p-3 bg-muted/40 text-[12px] font-mono text-muted-foreground whitespace-pre-wrap break-words border border-border/50">
+                      {m.supportingCites.map((c) => safeText(c)).join("\n")}
+                    </pre>
+                  )}
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
@@ -1162,33 +1317,51 @@ function MethodologyTab({
       </TabContainer>
     );
   }
+  const ids = data.map((_, i) => `methodology-${i}`);
+  const collapse = useCollapsibleSet(ids);
   return (
     <TabContainer>
       <TabSectionHeader title="Methodology challenges" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">None identified.</p>
       ) : (
-        <div className="space-y-4">
-          {data.map((m, i) => (
-            <article key={i} className="border border-border p-5 print:break-inside-avoid">
-              <div className="flex items-start gap-2 mb-3 flex-wrap">
-                <span className="text-[16px] font-medium text-foreground">
-                  {safeText(m.targetWitness)}
-                </span>
-                <Badge tone="bg-foreground/10 text-foreground">{m.motionType}</Badge>
-                <Cite>{labelFor(m.caseId, m.targetWitness)}</Cite>
-              </div>
-              <p className="text-[16px] text-foreground/90 leading-relaxed">
-                {safeText(m.basis)}
-              </p>
-              {m.supportingCites && m.supportingCites.length > 0 && (
-                <pre className="mt-4 p-3 bg-muted/40 text-[12px] font-mono text-muted-foreground whitespace-pre-wrap break-words border border-border/50">
-                  {m.supportingCites.map((c) => safeText(c)).join("\n")}
-                </pre>
-              )}
-            </article>
-          ))}
-        </div>
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {data.map((m, i) => {
+              const id = ids[i];
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <>
+                      <span className="text-[16px] font-medium text-foreground">
+                        {safeText(m.targetWitness)}
+                      </span>
+                      <Badge tone="bg-foreground/10 text-foreground">{m.motionType}</Badge>
+                    </>
+                  }
+                  meta={<Cite>{labelFor(m.caseId, m.targetWitness)}</Cite>}
+                >
+                  <p className="text-[16px] text-foreground/90 leading-relaxed mt-2">
+                    {safeText(m.basis)}
+                  </p>
+                  {m.supportingCites && m.supportingCites.length > 0 && (
+                    <pre className="mt-4 p-3 bg-muted/40 text-[12px] font-mono text-muted-foreground whitespace-pre-wrap break-words border border-border/50">
+                      {m.supportingCites.map((c) => safeText(c)).join("\n")}
+                    </pre>
+                  )}
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
@@ -1450,66 +1623,90 @@ function ThemesTab({
       </TabContainer>
     );
   }
+  const ids = data.map((_, i) => `theme-${i}`);
+  const collapse = useCollapsibleSet(ids);
+  const truncate = (s: string, n: number) =>
+    s.length > n ? `${s.slice(0, n).trimEnd()}…` : s;
   return (
     <TabContainer>
       <TabSectionHeader title="Trial themes" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No themes identified.</p>
       ) : (
-        <div className="space-y-4">
-          {data.map((t, i) => (
-            <article key={i} className="border border-border p-5 print:break-inside-avoid">
-              <h3 className="text-[17px] font-medium text-foreground mb-4">
-                {safeText(t.theme)}
-              </h3>
-              {t.supportingWitnesses.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-                    Supporting witnesses
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {t.supportingWitnesses.map((w, j) => (
-                      <span
-                        key={j}
-                        className="inline-flex items-center px-2 h-6 text-[12px] bg-foreground/[0.05] text-foreground/90 border border-border"
-                      >
-                        {safeText(w)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {t.supportingFacts.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-                    Supporting facts
-                  </div>
-                  <ul className="space-y-1.5">
-                    {t.supportingFacts.map((f, j) => (
-                      <li
-                        key={j}
-                        className="text-[15px] text-foreground/90 leading-relaxed flex gap-2"
-                      >
-                        <span className="text-muted-foreground">›</span>
-                        <span>{safeText(f)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {t.voirDireAngle && (
-                <div className="border-l-2 border-foreground/60 pl-3 py-1 mt-3">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
-                    Voir dire angle
-                  </div>
-                  <p className="text-[15px] text-foreground/90 leading-relaxed">
-                    {safeText(t.voirDireAngle)}
-                  </p>
-                </div>
-              )}
-            </article>
-          ))}
-        </div>
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {data.map((t, i) => {
+              const id = ids[i];
+              const themeText = safeText(t.theme);
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <h3 className="text-[16px] font-medium text-foreground truncate">
+                      {truncate(themeText, 80)}
+                    </h3>
+                  }
+                >
+                  <h3 className="text-[17px] font-medium text-foreground mb-4 mt-2">
+                    {themeText}
+                  </h3>
+                  {t.supportingWitnesses.length > 0 && (
+                    <div className="mb-4">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
+                        Supporting witnesses
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {t.supportingWitnesses.map((w, j) => (
+                          <span
+                            key={j}
+                            className="inline-flex items-center px-2 h-6 text-[12px] bg-foreground/[0.05] text-foreground/90 border border-border"
+                          >
+                            {safeText(w)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {t.supportingFacts.length > 0 && (
+                    <div className="mb-4">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
+                        Supporting facts
+                      </div>
+                      <ul className="space-y-1.5">
+                        {t.supportingFacts.map((f, j) => (
+                          <li
+                            key={j}
+                            className="text-[15px] text-foreground/90 leading-relaxed flex gap-2"
+                          >
+                            <span className="text-muted-foreground">›</span>
+                            <span>{safeText(f)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {t.voirDireAngle && (
+                    <div className="border-l-2 border-foreground/60 pl-3 py-1 mt-3">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
+                        Voir dire angle
+                      </div>
+                      <p className="text-[15px] text-foreground/90 leading-relaxed">
+                        {safeText(t.voirDireAngle)}
+                      </p>
+                    </div>
+                  )}
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
@@ -1536,38 +1733,56 @@ function DiscoveryGapsTab({
       </TabContainer>
     );
   }
+  const ids = data.map((_, i) => `gap-${i}`);
+  const collapse = useCollapsibleSet(ids);
   return (
     <TabContainer>
       <TabSectionHeader title="Discovery gaps" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No gaps identified.</p>
       ) : (
-        <div className="space-y-3">
-          {data.map((g, i) => (
-            <article key={i} className="border border-border p-5 print:break-inside-avoid">
-              <div className="flex items-start gap-3 mb-3 flex-wrap">
-                <h3 className="flex-1 text-[16px] font-medium text-foreground">
-                  {safeText(g.gap)}
-                </h3>
-                <Badge tone={PRIORITY_TONE[g.priority] ?? PRIORITY_TONE.medium}>
-                  {g.priority}
-                </Badge>
-              </div>
-              {g.impact && (
-                <p className="text-[15px] text-foreground/90 leading-relaxed">
-                  <span className="text-muted-foreground">Impact: </span>
-                  {safeText(g.impact)}
-                </p>
-              )}
-              {g.recommendedAction && (
-                <p className="text-[15px] text-foreground/90 leading-relaxed mt-2">
-                  <span className="text-muted-foreground">Action: </span>
-                  {safeText(g.recommendedAction)}
-                </p>
-              )}
-            </article>
-          ))}
-        </div>
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {data.map((g, i) => {
+              const id = ids[i];
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <>
+                      <h3 className="flex-1 min-w-0 text-[16px] font-medium text-foreground">
+                        {safeText(g.gap)}
+                      </h3>
+                      <Badge tone={PRIORITY_TONE[g.priority] ?? PRIORITY_TONE.medium}>
+                        {g.priority}
+                      </Badge>
+                    </>
+                  }
+                >
+                  {g.impact && (
+                    <p className="text-[15px] text-foreground/90 leading-relaxed mt-2">
+                      <span className="text-muted-foreground">Impact: </span>
+                      {safeText(g.impact)}
+                    </p>
+                  )}
+                  {g.recommendedAction && (
+                    <p className="text-[15px] text-foreground/90 leading-relaxed mt-2">
+                      <span className="text-muted-foreground">Action: </span>
+                      {safeText(g.recommendedAction)}
+                    </p>
+                  )}
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
@@ -1600,61 +1815,76 @@ function MissedTab({
     }
     return a.canStillFix ? -1 : 1;
   });
+  const ids = sorted.map((_, i) => `missed-${i}`);
+  const collapse = useCollapsibleSet(ids);
   return (
     <TabContainer>
       <TabSectionHeader title="What we missed" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">Nothing flagged.</p>
       ) : (
-        <div className="space-y-4">
-          {sorted.map((m, i) => (
-            <article
-              key={i}
-              className="border border-border p-5 print:break-inside-avoid relative"
-            >
-              {m.canStillFix && (
-                <span className="absolute top-4 right-4">
-                  <Badge tone="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
-                    Can still fix
-                  </Badge>
-                </span>
-              )}
-              <h3 className="text-[16px] font-medium text-foreground mb-4 pr-28">
-                {safeText(m.deposition)}
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
-                    Missed
-                  </div>
-                  <p className="text-[15px] text-foreground/90 leading-relaxed">
-                    {safeText(m.missedOpportunity)}
-                  </p>
-                </div>
-                {m.wouldHaveHelped && (
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
-                      Would have helped
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {sorted.map((m, i) => {
+              const id = ids[i];
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <>
+                      <h3 className="flex-1 min-w-0 text-[16px] font-medium text-foreground truncate">
+                        {safeText(m.deposition)}
+                      </h3>
+                      {m.canStillFix && (
+                        <Badge tone="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+                          Can still fix
+                        </Badge>
+                      )}
+                    </>
+                  }
+                >
+                  <div className="space-y-3 mt-2">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
+                        Missed
+                      </div>
+                      <p className="text-[15px] text-foreground/90 leading-relaxed">
+                        {safeText(m.missedOpportunity)}
+                      </p>
                     </div>
-                    <p className="text-[15px] text-foreground/90 leading-relaxed">
-                      {safeText(m.wouldHaveHelped)}
-                    </p>
+                    {m.wouldHaveHelped && (
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
+                          Would have helped
+                        </div>
+                        <p className="text-[15px] text-foreground/90 leading-relaxed">
+                          {safeText(m.wouldHaveHelped)}
+                        </p>
+                      </div>
+                    )}
+                    {m.canStillFix && m.fixAction && (
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
+                          Fix
+                        </div>
+                        <p className="text-[15px] text-foreground leading-relaxed">
+                          {safeText(m.fixAction)}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {m.canStillFix && m.fixAction && (
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
-                      Fix
-                    </div>
-                    <p className="text-[15px] text-foreground leading-relaxed">
-                      {safeText(m.fixAction)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
