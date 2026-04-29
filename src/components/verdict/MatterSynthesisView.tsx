@@ -1623,66 +1623,90 @@ function ThemesTab({
       </TabContainer>
     );
   }
+  const ids = data.map((_, i) => `theme-${i}`);
+  const collapse = useCollapsibleSet(ids);
+  const truncate = (s: string, n: number) =>
+    s.length > n ? `${s.slice(0, n).trimEnd()}…` : s;
   return (
     <TabContainer>
       <TabSectionHeader title="Trial themes" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No themes identified.</p>
       ) : (
-        <div className="space-y-4">
-          {data.map((t, i) => (
-            <article key={i} className="border border-border p-5 print:break-inside-avoid">
-              <h3 className="text-[17px] font-medium text-foreground mb-4">
-                {safeText(t.theme)}
-              </h3>
-              {t.supportingWitnesses.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-                    Supporting witnesses
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {t.supportingWitnesses.map((w, j) => (
-                      <span
-                        key={j}
-                        className="inline-flex items-center px-2 h-6 text-[12px] bg-foreground/[0.05] text-foreground/90 border border-border"
-                      >
-                        {safeText(w)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {t.supportingFacts.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-                    Supporting facts
-                  </div>
-                  <ul className="space-y-1.5">
-                    {t.supportingFacts.map((f, j) => (
-                      <li
-                        key={j}
-                        className="text-[15px] text-foreground/90 leading-relaxed flex gap-2"
-                      >
-                        <span className="text-muted-foreground">›</span>
-                        <span>{safeText(f)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {t.voirDireAngle && (
-                <div className="border-l-2 border-foreground/60 pl-3 py-1 mt-3">
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
-                    Voir dire angle
-                  </div>
-                  <p className="text-[15px] text-foreground/90 leading-relaxed">
-                    {safeText(t.voirDireAngle)}
-                  </p>
-                </div>
-              )}
-            </article>
-          ))}
-        </div>
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {data.map((t, i) => {
+              const id = ids[i];
+              const themeText = safeText(t.theme);
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <h3 className="text-[16px] font-medium text-foreground truncate">
+                      {truncate(themeText, 80)}
+                    </h3>
+                  }
+                >
+                  <h3 className="text-[17px] font-medium text-foreground mb-4 mt-2">
+                    {themeText}
+                  </h3>
+                  {t.supportingWitnesses.length > 0 && (
+                    <div className="mb-4">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
+                        Supporting witnesses
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {t.supportingWitnesses.map((w, j) => (
+                          <span
+                            key={j}
+                            className="inline-flex items-center px-2 h-6 text-[12px] bg-foreground/[0.05] text-foreground/90 border border-border"
+                          >
+                            {safeText(w)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {t.supportingFacts.length > 0 && (
+                    <div className="mb-4">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
+                        Supporting facts
+                      </div>
+                      <ul className="space-y-1.5">
+                        {t.supportingFacts.map((f, j) => (
+                          <li
+                            key={j}
+                            className="text-[15px] text-foreground/90 leading-relaxed flex gap-2"
+                          >
+                            <span className="text-muted-foreground">›</span>
+                            <span>{safeText(f)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {t.voirDireAngle && (
+                    <div className="border-l-2 border-foreground/60 pl-3 py-1 mt-3">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
+                        Voir dire angle
+                      </div>
+                      <p className="text-[15px] text-foreground/90 leading-relaxed">
+                        {safeText(t.voirDireAngle)}
+                      </p>
+                    </div>
+                  )}
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
