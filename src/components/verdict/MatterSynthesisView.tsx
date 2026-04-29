@@ -936,22 +936,22 @@ function CausationTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Causation analysis" />
         <UnavailableInline
           subCallKey="causationMethodology"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer width="wide">
       <TabSectionHeader title="Causation analysis" />
-      <div className="space-y-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="border border-border p-5">
+      <div className="space-y-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
               Baseline conditions
             </div>
@@ -970,7 +970,7 @@ function CausationTab({
               ))}
             </ul>
           </div>
-          <div className="border border-border p-5">
+          <div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
               Prior accident sequelae
             </div>
@@ -991,17 +991,17 @@ function CausationTab({
           </div>
         </div>
         {data.accidentMechanism && (
-          <div>
+          <div className="max-w-[760px]">
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
               Accident mechanism
             </div>
-            <p className="text-[16px] text-foreground/90 leading-relaxed">
+            <p className="text-[16px] leading-[1.6] text-foreground">
               {safeText(data.accidentMechanism)}
             </p>
           </div>
         )}
         {data.apportionmentArguments.length > 0 && (
-          <div>
+          <div className="max-w-[760px]">
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
               Apportionment arguments
             </div>
@@ -1009,7 +1009,7 @@ function CausationTab({
               {data.apportionmentArguments.map((a, i) => (
                 <li
                   key={i}
-                  className="text-[16px] text-foreground/90 flex gap-3 leading-relaxed"
+                  className="text-[16px] text-foreground flex gap-3 leading-[1.6]"
                 >
                   <span className="text-muted-foreground tabular-nums shrink-0">
                     {i + 1}.
@@ -1021,17 +1021,17 @@ function CausationTab({
           </div>
         )}
         {data.weakestCausationLink && (
-          <div className="border-l-4 border-foreground bg-foreground/[0.03] pl-5 pr-4 py-4">
+          <div className="max-w-[760px] border-l-4 border-foreground bg-foreground/[0.03] pl-5 pr-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
               Weakest causation link
             </div>
-            <p className="text-[17px] text-foreground leading-relaxed font-medium">
+            <p className="text-[17px] text-foreground leading-[1.6] font-medium">
               {safeText(data.weakestCausationLink)}
             </p>
           </div>
         )}
       </div>
-    </>
+    </TabContainer>
   );
 }
 
