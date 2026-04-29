@@ -908,7 +908,7 @@ export async function runSynthesis(synthesisId: string) {
       error: finalStatus === "error" ? finalMessage : null,
     });
     console.log(
-      `[synthesize.process] ${synthesisId} ${finalStatus} (${successCount}/6 sub-calls succeeded)`,
+      `[synthesize.process] ${synthesisId} ${finalStatus} (${successCount}/${SUB_CALLS.length} sub-calls succeeded)`,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
