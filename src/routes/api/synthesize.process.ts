@@ -432,14 +432,18 @@ ${JSON.stringify(cards, null, 2)}`;
 // trimCardForSection returns a minimal projection per section.
 
 type SectionKey =
-  | "strategicOverview"
+  | "execSummary"
+  | "biasNarrative"
+  | "trialThemes"
   | "witnessThreats"
   | "contradictions"
   | "admissionsInventory"
-  | "causationMethodology"
-  | "motionsDiscovery"
-  | "retrospective"
-  | "trialThemes";
+  | "causationAnalysis"
+  | "methodologyChallenges"
+  | "motionsInLimine"
+  | "discoveryGaps"
+  | "whatWeMessedUp"
+  | "whatToDoNext";
 
 function trimCardForSection(
   card: DepositionCard,
@@ -447,10 +451,25 @@ function trimCardForSection(
 ): Partial<DepositionCard> & { caseId: string; deponentName: string } {
   const base = { caseId: card.caseId, deponentName: card.deponentName };
   switch (section) {
-    case "strategicOverview":
+    case "execSummary":
     case "witnessThreats":
       // Headline analyses get the full card.
       return card;
+    case "biasNarrative":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        biasIndicators: card.biasIndicators,
+        methodologyIssues: card.methodologyIssues,
+      };
+    case "trialThemes":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        keyAdmissions: card.keyAdmissions,
+        biasIndicators: card.biasIndicators,
+        priorConditionsDisclosed: card.priorConditionsDisclosed,
+      };
     case "contradictions":
       return {
         ...base,
@@ -467,17 +486,23 @@ function trimCardForSection(
         priorConditionsDisclosed: card.priorConditionsDisclosed,
         vulnerabilities: card.vulnerabilities,
       };
-    case "causationMethodology":
+    case "causationAnalysis":
       return {
         ...base,
         deponentRole: card.deponentRole,
         priorConditionsDisclosed: card.priorConditionsDisclosed,
         contradictionsWithOtherWitnesses: card.contradictionsWithOtherWitnesses,
+        vulnerabilities: card.vulnerabilities,
+      };
+    case "methodologyChallenges":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
         methodologyIssues: card.methodologyIssues,
         biasIndicators: card.biasIndicators,
         vulnerabilities: card.vulnerabilities,
       };
-    case "motionsDiscovery":
+    case "motionsInLimine":
       return {
         ...base,
         deponentRole: card.deponentRole,
@@ -487,18 +512,27 @@ function trimCardForSection(
         keyAdmissions: card.keyAdmissions,
         unresolvedQuestions: card.unresolvedQuestions,
       };
-    case "retrospective":
+    case "discoveryGaps":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        unresolvedQuestions: card.unresolvedQuestions,
+        priorConditionsDisclosed: card.priorConditionsDisclosed,
+        biasIndicators: card.biasIndicators,
+      };
+    case "whatWeMessedUp":
       return {
         ...base,
         vulnerabilities: card.vulnerabilities,
         unresolvedQuestions: card.unresolvedQuestions,
       };
-    case "trialThemes":
+    case "whatToDoNext":
       return {
         ...base,
         deponentRole: card.deponentRole,
-        keyAdmissions: card.keyAdmissions,
-        biasIndicators: card.biasIndicators,
+        vulnerabilities: card.vulnerabilities,
+        unresolvedQuestions: card.unresolvedQuestions,
+        methodologyIssues: card.methodologyIssues,
       };
   }
 }
