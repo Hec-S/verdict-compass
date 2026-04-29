@@ -955,6 +955,28 @@ function WitnessesTab({
 }) {
   const [filter, setFilter] = useState<"all" | "high" | "medium" | "low">("all");
 
+  const sortedAll = useMemo(
+    () => data.slice().sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99)),
+    [data],
+  );
+  const idFor = (i: number) => `witness-${i + 1}`;
+  const allIds = useMemo(() => sortedAll.map((_, i) => idFor(i)), [sortedAll]);
+  const collapse = useCollapsibleSet(allIds);
+
+  // Auto-expand from URL hash on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (hash && allIds.includes(hash)) {
+      collapse.setOnly(hash);
+      // Defer scroll to next frame so the DOM has the id mounted.
+      requestAnimationFrame(() => {
+        document.getElementById(hash)?.scrollIntoView({ block: "start" });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allIds.join("|")]);
+
   if (isFailed) {
     return (
       <TabContainer>
@@ -964,9 +986,12 @@ function WitnessesTab({
     );
   }
 
-  const sorted = data.slice().sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
   const filtered =
-    filter === "all" ? sorted : sorted.filter((w) => w.threatLevel === filter);
+    filter === "all"
+      ? sortedAll.map((w, i) => ({ w, i }))
+      : sortedAll
+          .map((w, i) => ({ w, i }))
+          .filter(({ w }) => w.threatLevel === filter);
 
   const filters: Array<{ id: typeof filter; label: string }> = [
     { id: "all", label: "All" },
@@ -1001,68 +1026,68 @@ function WitnessesTab({
               </button>
             ))}
           </div>
-          <div className="space-y-4">
-            {filtered.map((w, i) => {
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {filtered.map(({ w, i }) => {
               const top = (w.rank ?? i + 1) === 1;
+              const id = idFor(i);
               return (
-                <article
+                <CollapsibleCard
                   key={`${w.caseId}-${i}`}
-                  className={`border p-5 print:break-inside-avoid ${
-                    top ? "border-foreground/50" : "border-border"
-                  }`}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => {
+                    collapse.toggle(id);
+                    if (typeof window !== "undefined") {
+                      const becomingOpen = !collapse.isOpen(id);
+                      if (becomingOpen) {
+                        history.replaceState(null, "", `#${id}`);
+                      }
+                    }
+                  }}
+                  emphasis={top}
+                  rank={w.rank}
+                  header={
+                    <>
+                      <h3 className="text-[16px] font-medium text-foreground truncate">
+                        {w.deponentName}
+                      </h3>
+                      <Badge tone={THREAT_TONE[w.threatLevel] ?? THREAT_TONE.medium}>
+                        {w.threatLevel} threat
+                      </Badge>
+                    </>
+                  }
+                  meta={<Cite>{labelFor(w.caseId, w.deponentName)}</Cite>}
                 >
-                  <div className="flex items-start gap-5">
-                    <div
-                      className={`shrink-0 tabular-nums text-foreground/80 ${
-                        top
-                          ? "text-[40px] font-semibold leading-none"
-                          : "text-[28px] font-medium leading-none"
-                      }`}
-                    >
-                      {w.rank}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-2">
-                        <h3
-                          className={`font-medium text-foreground ${
-                            top ? "text-[18px]" : "text-[16px]"
-                          }`}
-                        >
-                          {w.deponentName}
-                        </h3>
-                        <Badge tone={THREAT_TONE[w.threatLevel] ?? THREAT_TONE.medium}>
-                          {w.threatLevel} threat
-                        </Badge>
-                        <Cite>{labelFor(w.caseId, w.deponentName)}</Cite>
+                  {w.summary && (
+                    <p className="text-[16px] text-foreground/90 leading-relaxed mb-3 mt-2">
+                      {safeText(w.summary)}
+                    </p>
+                  )}
+                  {w.crossPriorities && w.crossPriorities.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-2">
+                        Cross priorities
                       </div>
-                      {w.summary && (
-                        <p className="text-[16px] text-foreground/90 leading-relaxed mb-3">
-                          {safeText(w.summary)}
-                        </p>
-                      )}
-                      {w.crossPriorities && w.crossPriorities.length > 0 && (
-                        <div className="mt-3">
-                          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-2">
-                            Cross priorities
-                          </div>
-                          <ol className="space-y-2 list-none">
-                            {w.crossPriorities.map((cp, j) => (
-                              <li
-                                key={j}
-                                className="text-[15px] text-foreground/90 leading-relaxed flex gap-3"
-                              >
-                                <span className="text-muted-foreground tabular-nums shrink-0">
-                                  {j + 1}.
-                                </span>
-                                <span>{safeText(cp)}</span>
-                              </li>
-                            ))}
-                          </ol>
-                        </div>
-                      )}
+                      <ol className="space-y-2 list-none">
+                        {w.crossPriorities.map((cp, j) => (
+                          <li
+                            key={j}
+                            className="text-[15px] text-foreground/90 leading-relaxed flex gap-3"
+                          >
+                            <span className="text-muted-foreground tabular-nums shrink-0">
+                              {j + 1}.
+                            </span>
+                            <span>{safeText(cp)}</span>
+                          </li>
+                        ))}
+                      </ol>
                     </div>
-                  </div>
-                </article>
+                  )}
+                </CollapsibleCard>
               );
             })}
             {filtered.length === 0 && (
