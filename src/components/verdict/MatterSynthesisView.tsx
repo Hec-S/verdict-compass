@@ -390,7 +390,8 @@ export function MatterSynthesisView({
   const isFailed = (key: SynthesisSubCallKey) => failed.has(key);
 
   const tabs: TabDef[] = useMemo(() => {
-    const contradictionsFailed = failed.has("contradictionsAdmissions");
+    const contradictionsFailed = failed.has("contradictions");
+    const admissionsFailed = failed.has("admissionsInventory");
     return [
       { id: "overview", label: "Overview", subCall: "strategicOverview" },
       {
@@ -417,16 +418,16 @@ export function MatterSynthesisView({
         label: "Contradictions",
         count: contradictionsFailed ? undefined : synthesis.contradictionMatrix.length,
         unavailableLabel: contradictionsFailed ? "unavailable" : undefined,
-        subCall: "contradictionsAdmissions",
+        subCall: "contradictions",
       },
       {
         id: "admissions",
         label: "Admissions",
-        count: contradictionsFailed
+        count: admissionsFailed
           ? undefined
           : synthesis.unifiedAdmissionsInventory.length,
-        unavailableLabel: contradictionsFailed ? "unavailable" : undefined,
-        subCall: "contradictionsAdmissions",
+        unavailableLabel: admissionsFailed ? "unavailable" : undefined,
+        subCall: "admissionsInventory",
       },
       { id: "bias", label: "Bias Narrative", subCall: "strategicOverview" },
       {
