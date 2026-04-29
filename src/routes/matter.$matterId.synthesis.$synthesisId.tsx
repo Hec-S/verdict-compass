@@ -1,8 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
-import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { SiteHeader } from "@/components/verdict/SiteHeader";
 import {
   MatterSynthesisView,
@@ -37,27 +35,28 @@ export const Route = createFileRoute(
   head: () => ({
     meta: [{ title: "Matter Synthesis — VerdictIQ" }],
   }),
-  validateSearch: zodValidator(
-    z.object({
-      tab: fallback(
-        z.enum([
-          "overview",
-          "witnesses",
-          "causation",
-          "motions",
-          "methodology",
-          "contradictions",
-          "admissions",
-          "bias",
-          "themes",
-          "discovery",
-          "missed",
-          "next",
-        ]),
-        "overview",
-      ).default("overview"),
-    }),
-  ),
+  validateSearch: (search: Record<string, unknown>): { tab: SynthesisTabId } => {
+    const allowed: SynthesisTabId[] = [
+      "overview",
+      "witnesses",
+      "causation",
+      "motions",
+      "methodology",
+      "contradictions",
+      "admissions",
+      "bias",
+      "themes",
+      "discovery",
+      "missed",
+      "next",
+    ];
+    const t = search.tab;
+    return {
+      tab: typeof t === "string" && (allowed as string[]).includes(t)
+        ? (t as SynthesisTabId)
+        : "overview",
+    };
+  },
   component: MatterSynthesisPage,
 });
 
