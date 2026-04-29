@@ -673,61 +673,64 @@ function OverviewTab({
     <>
       {/* Single-column upper sections */}
       <TabContainer>
-        {/* Defense theory */}
-        <section>
-          <SectionLabel>Defense theory</SectionLabel>
-          <p className="mt-4 text-[18px] leading-[1.6] text-foreground">
-            {safeText(exec.defenseTheory) || "No defense theory produced."}
-          </p>
-        </section>
-
-        {/* Case strength */}
-        <section className="mt-16">
-          <SectionLabel>Case strength</SectionLabel>
-          <div className="mt-4">
-            <HeadlinePill
-              tone={STRENGTH_HEADLINE_TONE[exec.caseStrength]}
-              size="default"
-            >
-              {STRENGTH_LABEL[exec.caseStrength]}
-            </HeadlinePill>
-          </div>
-          {exec.strengthRationale && (
-            <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
-              {safeText(exec.strengthRationale)}
+        <div className="space-y-6">
+          {/* Defense theory */}
+          <SectionCard label="Defense theory">
+            <p className="text-[18px] leading-[1.6] text-foreground">
+              {safeText(exec.defenseTheory) || "No defense theory produced."}
             </p>
-          )}
-        </section>
+          </SectionCard>
 
-        {/* Recommended posture */}
-        <section className="mt-16">
-          <SectionLabel>Recommended posture</SectionLabel>
-          <div className="mt-4">
-            <HeadlinePill tone="bg-foreground text-background" size="lg">
-              {POSTURE_LABEL[exec.recommendedPosture]}
-            </HeadlinePill>
-          </div>
-          {exec.postureRationale && (
-            <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
-              {safeText(exec.postureRationale)}
-            </p>
-          )}
-        </section>
+          {/* Case strength */}
+          <SectionCard label="Case strength">
+            <div>
+              <HeadlinePill
+                tone={STRENGTH_HEADLINE_TONE[exec.caseStrength]}
+                size="default"
+              >
+                {STRENGTH_LABEL[exec.caseStrength]}
+              </HeadlinePill>
+            </div>
+            {exec.strengthRationale && (
+              <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
+                {safeText(exec.strengthRationale)}
+              </p>
+            )}
+          </SectionCard>
+
+          {/* Recommended posture */}
+          <SectionCard label="Recommended posture">
+            <div>
+              <HeadlinePill tone="bg-foreground text-background" size="lg">
+                {POSTURE_LABEL[exec.recommendedPosture]}
+              </HeadlinePill>
+            </div>
+            {exec.postureRationale && (
+              <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
+                {safeText(exec.postureRationale)}
+              </p>
+            )}
+          </SectionCard>
+        </div>
       </TabContainer>
 
       {/* Two-column threats / opportunities — wider container */}
       <TabContainer width="wide">
-        <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
-          <NumberedEditorialList
-            label="Top threats"
-            items={exec.topThreats.map((t) => safeText(t))}
-            emptyText="None identified."
-          />
-          <NumberedEditorialList
-            label="Top opportunities"
-            items={exec.topOpportunities.map((t) => safeText(t))}
-            emptyText="None identified."
-          />
+        <div className="mt-6">
+          <SectionCard>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
+              <NumberedEditorialList
+                label="Top threats"
+                items={exec.topThreats.map((t) => safeText(t))}
+                emptyText="None identified."
+              />
+              <NumberedEditorialList
+                label="Top opportunities"
+                items={exec.topOpportunities.map((t) => safeText(t))}
+                emptyText="None identified."
+              />
+            </div>
+          </SectionCard>
         </div>
       </TabContainer>
     </>
