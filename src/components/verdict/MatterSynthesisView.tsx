@@ -624,107 +624,135 @@ function OverviewTab({
 }) {
   if (isFailed) {
     return (
-      <>
-        <TabSectionHeader title="Overview" />
+      <TabContainer>
         <UnavailableInline subCallKey="strategicOverview" onRerunFailed={onRerunFailed} block />
-      </>
+      </TabContainer>
+    );
+  }
+
+  const STRENGTH_HEADLINE_TONE: Record<
+    CaseSynthesis["execSummary"]["caseStrength"],
+    string
+  > = {
+    strong: "bg-emerald-600 text-white",
+    favorable: "bg-emerald-600 text-white",
+    mixed: "bg-amber-500 text-white",
+    unfavorable: "bg-orange-600 text-white",
+    weak: "bg-red-600 text-white",
+  };
+
+  return (
+    <>
+      {/* Single-column upper sections */}
+      <TabContainer>
+        {/* Defense theory */}
+        <section>
+          <SectionLabel>Defense theory</SectionLabel>
+          <p className="mt-4 text-[18px] leading-[1.6] text-foreground">
+            {safeText(exec.defenseTheory) || "No defense theory produced."}
+          </p>
+        </section>
+
+        {/* Case strength */}
+        <section className="mt-16">
+          <SectionLabel>Case strength</SectionLabel>
+          <div className="mt-4">
+            <HeadlinePill
+              tone={STRENGTH_HEADLINE_TONE[exec.caseStrength]}
+              size="default"
+            >
+              {STRENGTH_LABEL[exec.caseStrength]}
+            </HeadlinePill>
+          </div>
+          {exec.strengthRationale && (
+            <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
+              {safeText(exec.strengthRationale)}
+            </p>
+          )}
+        </section>
+
+        {/* Recommended posture */}
+        <section className="mt-16">
+          <SectionLabel>Recommended posture</SectionLabel>
+          <div className="mt-4">
+            <HeadlinePill tone="bg-foreground text-background" size="lg">
+              {POSTURE_LABEL[exec.recommendedPosture]}
+            </HeadlinePill>
+          </div>
+          {exec.postureRationale && (
+            <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
+              {safeText(exec.postureRationale)}
+            </p>
+          )}
+        </section>
+      </TabContainer>
+
+      {/* Two-column threats / opportunities — wider container */}
+      <TabContainer width="wide">
+        <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
+          <NumberedEditorialList
+            label="Top threats"
+            items={exec.topThreats.map((t) => safeText(t))}
+            emptyText="None identified."
+          />
+          <NumberedEditorialList
+            label="Top opportunities"
+            items={exec.topOpportunities.map((t) => safeText(t))}
+            emptyText="None identified."
+          />
+        </div>
+      </TabContainer>
+    </>
+  );
+}
+
+/**
+ * Clean numbered editorial list — large muted number + headline first
+ * sentence + explanation. Items separated by a 1px divider.
+ */
+function NumberedEditorialList({
+  label,
+  items,
+  emptyText,
+}: {
+  label: string;
+  items: string[];
+  emptyText: string;
+}) {
+  if (items.length === 0) {
+    return (
+      <div>
+        <SectionLabel>{label}</SectionLabel>
+        <p className="mt-4 text-[14px] text-muted-foreground italic">{emptyText}</p>
+      </div>
     );
   }
   return (
     <div>
-      {/* Defense theory hero */}
-      <div className="mb-12">
-        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-4">
-          Defense theory
-        </div>
-        <p className="text-[20px] leading-[1.55] text-foreground max-w-[68ch]">
-          {safeText(exec.defenseTheory) || "No defense theory produced."}
-        </p>
-      </div>
-
-      {/* Strength + posture */}
-      <div className="space-y-6 mb-12">
-        <div className="flex items-start gap-4 flex-wrap">
-          <div className="w-[180px] shrink-0">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-              Case strength
-            </div>
-            <Badge tone={STRENGTH_TONE[exec.caseStrength]}>
-              {STRENGTH_LABEL[exec.caseStrength]}
-            </Badge>
-          </div>
-          {exec.strengthRationale && (
-            <p className="flex-1 min-w-[260px] text-[16px] text-foreground/85 leading-relaxed">
-              {safeText(exec.strengthRationale)}
-            </p>
-          )}
-        </div>
-        <div className="flex items-start gap-4 flex-wrap">
-          <div className="w-[180px] shrink-0">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-              Recommended posture
-            </div>
-            <Badge tone="bg-foreground text-background">
-              {POSTURE_LABEL[exec.recommendedPosture]}
-            </Badge>
-          </div>
-          {exec.postureRationale && (
-            <p className="flex-1 min-w-[260px] text-[16px] text-foreground/85 leading-relaxed">
-              {safeText(exec.postureRationale)}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Threats / Opportunities */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-            Top threats
-          </div>
-          <ol className="space-y-3">
-            {exec.topThreats.length === 0 && (
-              <li className="text-[14px] text-muted-foreground italic">None identified.</li>
-            )}
-            {exec.topThreats.map((t, i) => (
-              <li
-                key={i}
-                className="border border-red-500/25 bg-red-500/[0.04] p-4 flex gap-3"
-              >
-                <span className="text-red-700 dark:text-red-400 font-medium tabular-nums shrink-0 text-[14px]">
-                  {i + 1}.
-                </span>
-                <div className="text-[15px] text-foreground/90 leading-relaxed">
-                  {safeText(t)}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-            Top opportunities
-          </div>
-          <ol className="space-y-3">
-            {exec.topOpportunities.length === 0 && (
-              <li className="text-[14px] text-muted-foreground italic">None identified.</li>
-            )}
-            {exec.topOpportunities.map((t, i) => (
-              <li
-                key={i}
-                className="border border-emerald-500/25 bg-emerald-500/[0.04] p-4 flex gap-3"
-              >
-                <span className="text-emerald-700 dark:text-emerald-400 font-medium tabular-nums shrink-0 text-[14px]">
-                  {i + 1}.
-                </span>
-                <div className="text-[15px] text-foreground/90 leading-relaxed">
-                  {safeText(t)}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </div>
+      <SectionLabel>{label}</SectionLabel>
+      <ol className="mt-4">
+        {items.map((text, i) => {
+          const last = i === items.length - 1;
+          // Split into headline (first sentence/clause) + remainder.
+          const match = text.match(/^([^.!?—–-]+[.!?]?)(\s+)([\s\S]*)$/);
+          const headline = match ? match[1].trim() : text;
+          const remainder = match ? match[3].trim() : "";
+          return (
+            <li
+              key={i}
+              className={`flex gap-5 pb-6 ${last ? "" : "mb-6 border-b border-border"}`}
+            >
+              <span className="text-[24px] leading-[1.2] tabular-nums text-muted-foreground shrink-0 w-8">
+                {i + 1}
+              </span>
+              <div className="flex-1 min-w-0 text-[15px] leading-[1.5] text-foreground">
+                <span className="font-medium">{headline}</span>
+                {remainder ? <span className="text-foreground/85"> {remainder}</span> : null}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
