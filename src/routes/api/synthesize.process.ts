@@ -50,16 +50,72 @@ function extractJSON(raw: string, label = "section"): Record<string, unknown> {
   try {
     return JSON.parse(slice);
   } catch (err) {
-    // Truncated JSON — attempt a best-effort recovery by trimming trailing
-    // partial content and closing open arrays/objects.
+    const errMsg = err instanceof Error ? err.message : String(err);
+    // Surface the byte position so we can see exactly where the model broke
+    // the JSON (e.g. "position 31378").
     console.warn(
-      `[synthesize.process] ${label} JSON.parse failed, attempting recovery:`,
-      err instanceof Error ? err.message : String(err),
+      `[synthesize.process] ${label} JSON.parse failed at ${errMsg}; total length=${slice.length}. Trying tolerant cleanup.`,
     );
+    // Tolerant pass 1: strip trailing commas before } or ] (a common Claude
+    // failure mode) and retry.
+    const noTrailingCommas = slice.replace(/,(\s*[}\]])/g, "$1");
+    if (noTrailingCommas !== slice) {
+      try {
+        return JSON.parse(noTrailingCommas);
+      } catch (err2) {
+        console.warn(
+          `[synthesize.process] ${label} retry after stripping trailing commas failed:`,
+          err2 instanceof Error ? err2.message : String(err2),
+        );
+      }
+    }
+    // Tolerant pass 2: best-effort recovery by trimming partial content and
+    // closing open arrays/objects.
     const recovered = tryRecoverJSON(slice);
     if (recovered) return recovered;
+    // Tolerant pass 3: try parsing just the first complete top-level object.
+    const firstObj = extractFirstCompleteObject(slice);
+    if (firstObj) {
+      try {
+        return JSON.parse(firstObj);
+      } catch {
+        /* fall through */
+      }
+    }
     throw err;
   }
+}
+
+/** Returns the substring containing the first complete balanced JSON object,
+ *  or null if no such object exists. Respects strings/escapes. */
+function extractFirstCompleteObject(s: string): string | null {
+  const start = s.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (c === "\\") {
+      escape = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 function tryRecoverJSON(s: string): Record<string, unknown> | null {
