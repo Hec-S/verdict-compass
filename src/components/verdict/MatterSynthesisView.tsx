@@ -1113,99 +1113,122 @@ function CausationTab({
 }) {
   if (isFailed) {
     return (
-      <TabContainer>
-        <TabSectionHeader title="Causation analysis" />
-        <UnavailableInline
-          subCallKey="causationMethodology"
-          onRerunFailed={onRerunFailed}
-          block
-        />
+      <TabContainer width="wide">
+        <SectionCard>
+          <TabSectionHeader title="Causation analysis" />
+          <UnavailableInline
+            subCallKey="causationMethodology"
+            onRerunFailed={onRerunFailed}
+            block
+          />
+        </SectionCard>
       </TabContainer>
     );
   }
+  const mechanism = extractAccidentMechanism(data.accidentMechanism);
+  const baseline = data.baselineConditions ?? [];
+  const sequelae = data.priorAccidentSequelae ?? [];
+  const rowCount = Math.max(baseline.length, sequelae.length);
+  const hasComparison = rowCount > 0;
+  const args = data.apportionmentArguments ?? [];
+
   return (
     <TabContainer width="wide">
-      <TabSectionHeader title="Causation analysis" />
-      <div className="space-y-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-              Baseline conditions
-            </div>
-            <ul className="space-y-2">
-              {data.baselineConditions.length === 0 && (
-                <li className="text-[14px] text-muted-foreground italic">None identified.</li>
-              )}
-              {data.baselineConditions.map((c, i) => (
-                <li
-                  key={i}
-                  className="text-[15px] text-foreground/90 flex gap-2 leading-relaxed"
-                >
-                  <span className="text-muted-foreground">›</span>
-                  <span>{safeText(c)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-              Prior accident sequelae
-            </div>
-            <ul className="space-y-2">
-              {data.priorAccidentSequelae.length === 0 && (
-                <li className="text-[14px] text-muted-foreground italic">None identified.</li>
-              )}
-              {data.priorAccidentSequelae.map((c, i) => (
-                <li
-                  key={i}
-                  className="text-[15px] text-foreground/90 flex gap-2 leading-relaxed"
-                >
-                  <span className="text-muted-foreground">›</span>
-                  <span>{safeText(c)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-        {data.accidentMechanism && (
-          <div className="max-w-[760px]">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-              Accident mechanism
-            </div>
-            <p className="text-[16px] leading-[1.6] text-foreground">
-              {safeText(data.accidentMechanism)}
-            </p>
-          </div>
+      <div className="space-y-6">
+        {/* Card 1: Accident mechanism */}
+        {(mechanism.prose || mechanism.cites.length > 0) && (
+          <SectionCard label="Accident mechanism">
+            {mechanism.prose && (
+              <p className="text-[16px] leading-[1.6] text-foreground whitespace-pre-line">
+                {mechanism.prose}
+              </p>
+            )}
+            {mechanism.cites.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-border/60 font-mono text-[12px] text-muted-foreground space-y-1">
+                {mechanism.cites.map((c, i) => (
+                  <div key={i}>{c}</div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
         )}
-        {data.apportionmentArguments.length > 0 && (
-          <div className="max-w-[760px]">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-3">
-              Apportionment arguments
+
+        {/* Card 2: Baseline vs prior accident sequela */}
+        {hasComparison && (
+          <SectionCard label="Baseline condition vs prior accident sequela">
+            <div className="grid grid-cols-2 gap-x-8">
+              <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground pb-2 border-b border-border">
+                Baseline condition
+              </div>
+              <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground pb-2 border-b border-border">
+                Prior accident sequela
+              </div>
+              {Array.from({ length: rowCount }).map((_, i) => {
+                const b = baseline[i];
+                const s = sequelae[i];
+                return (
+                  <div
+                    key={`row-${i}`}
+                    className="contents"
+                  >
+                    <div className="py-3 border-b border-border/60 text-[15px] leading-[1.5] text-foreground/90">
+                      {b ? <CellWithCite value={b} /> : <span className="text-muted-foreground">—</span>}
+                    </div>
+                    <div className="py-3 border-b border-border/60 text-[15px] leading-[1.5] text-foreground/90">
+                      {s ? <CellWithCite value={s} /> : <span className="text-muted-foreground">—</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <ol className="space-y-3 list-none">
-              {data.apportionmentArguments.map((a, i) => (
-                <li
-                  key={i}
-                  className="text-[16px] text-foreground flex gap-3 leading-[1.6]"
-                >
-                  <span className="text-muted-foreground tabular-nums shrink-0">
-                    {i + 1}.
-                  </span>
-                  <span>{safeText(a)}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
+          </SectionCard>
         )}
+
+        {/* Card 3: Apportionment arguments */}
+        {args.length > 0 && (
+          <SectionCard label="Apportionment arguments">
+            <div className="space-y-4">
+              {args.map((a, i) => {
+                const { prose, cites } = splitProseAndCites(safeText(a));
+                const { headline, rest } = splitHeadline(prose);
+                return (
+                  <div
+                    key={i}
+                    className="border border-border rounded-md p-6 flex gap-5"
+                  >
+                    <div className="text-[24px] leading-none text-muted-foreground tabular-nums shrink-0 pt-0.5">
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] leading-[1.6] text-foreground">
+                        <span className="font-medium">{headline}</span>
+                        {rest && <span> {rest}</span>}
+                      </p>
+                      {cites.length > 0 && (
+                        <div className="mt-3 pt-2 border-t border-border/60 font-mono text-[12px] text-muted-foreground space-y-1">
+                          {cites.map((c, j) => (
+                            <div key={j}>{c}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+        )}
+
+        {/* Card 4: Weakest causation link */}
         {data.weakestCausationLink && (
-          <div className="max-w-[760px] border-l-4 border-foreground bg-foreground/[0.03] pl-5 pr-4 py-4">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
-              Weakest causation link
-            </div>
+          <SectionCard
+            label="Weakest causation link"
+            className="border-l-4 border-l-foreground bg-foreground/[0.03]"
+          >
             <p className="text-[17px] text-foreground leading-[1.6] font-medium">
               {safeText(data.weakestCausationLink)}
             </p>
-          </div>
+          </SectionCard>
         )}
       </div>
     </TabContainer>
