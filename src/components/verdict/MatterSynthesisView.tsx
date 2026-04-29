@@ -219,7 +219,7 @@ export function MatterSynthesisView({
           Defense theory
         </div>
         <p className="text-[18px] leading-snug font-medium text-foreground mb-5 print:text-[14px]">
-          {exec.defenseTheory || "No defense theory produced."}
+          {safeText(exec.defenseTheory) || "No defense theory produced."}
         </p>
 
         <div className="flex flex-wrap items-start gap-x-8 gap-y-4 mb-6">
@@ -232,7 +232,7 @@ export function MatterSynthesisView({
             </Badge>
             {exec.strengthRationale && (
               <p className="text-[12px] text-muted-foreground mt-1 max-w-md">
-                {exec.strengthRationale}
+                {safeText(exec.strengthRationale)}
               </p>
             )}
           </div>
@@ -245,7 +245,7 @@ export function MatterSynthesisView({
             </Badge>
             {exec.postureRationale && (
               <p className="text-[12px] text-muted-foreground mt-1 max-w-md">
-                {exec.postureRationale}
+                {safeText(exec.postureRationale)}
               </p>
             )}
           </div>
@@ -263,7 +263,7 @@ export function MatterSynthesisView({
               {exec.topThreats.map((t, i) => (
                 <li key={i} className="text-[13px] text-foreground leading-relaxed flex gap-2">
                   <span className="text-muted-foreground tabular-nums">{i + 1}.</span>
-                  <span>{t}</span>
+                  <span>{safeText(t)}</span>
                 </li>
               ))}
             </ul>
@@ -279,7 +279,7 @@ export function MatterSynthesisView({
               {exec.topOpportunities.map((t, i) => (
                 <li key={i} className="text-[13px] text-foreground leading-relaxed flex gap-2">
                   <span className="text-muted-foreground tabular-nums">{i + 1}.</span>
-                  <span>{t}</span>
+                  <span>{safeText(t)}</span>
                 </li>
               ))}
             </ul>
