@@ -1815,61 +1815,76 @@ function MissedTab({
     }
     return a.canStillFix ? -1 : 1;
   });
+  const ids = sorted.map((_, i) => `missed-${i}`);
+  const collapse = useCollapsibleSet(ids);
   return (
     <TabContainer>
       <TabSectionHeader title="What we missed" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">Nothing flagged.</p>
       ) : (
-        <div className="space-y-4">
-          {sorted.map((m, i) => (
-            <article
-              key={i}
-              className="border border-border p-5 print:break-inside-avoid relative"
-            >
-              {m.canStillFix && (
-                <span className="absolute top-4 right-4">
-                  <Badge tone="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
-                    Can still fix
-                  </Badge>
-                </span>
-              )}
-              <h3 className="text-[16px] font-medium text-foreground mb-4 pr-28">
-                {safeText(m.deposition)}
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
-                    Missed
-                  </div>
-                  <p className="text-[15px] text-foreground/90 leading-relaxed">
-                    {safeText(m.missedOpportunity)}
-                  </p>
-                </div>
-                {m.wouldHaveHelped && (
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
-                      Would have helped
+        <>
+          <ExpandCollapseControls
+            onExpandAll={collapse.expandAll}
+            onCollapseAll={collapse.collapseAll}
+          />
+          <div className="space-y-3">
+            {sorted.map((m, i) => {
+              const id = ids[i];
+              return (
+                <CollapsibleCard
+                  key={i}
+                  id={id}
+                  open={collapse.isOpen(id)}
+                  onToggle={() => collapse.toggle(id)}
+                  header={
+                    <>
+                      <h3 className="flex-1 min-w-0 text-[16px] font-medium text-foreground truncate">
+                        {safeText(m.deposition)}
+                      </h3>
+                      {m.canStillFix && (
+                        <Badge tone="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+                          Can still fix
+                        </Badge>
+                      )}
+                    </>
+                  }
+                >
+                  <div className="space-y-3 mt-2">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
+                        Missed
+                      </div>
+                      <p className="text-[15px] text-foreground/90 leading-relaxed">
+                        {safeText(m.missedOpportunity)}
+                      </p>
                     </div>
-                    <p className="text-[15px] text-foreground/90 leading-relaxed">
-                      {safeText(m.wouldHaveHelped)}
-                    </p>
+                    {m.wouldHaveHelped && (
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
+                          Would have helped
+                        </div>
+                        <p className="text-[15px] text-foreground/90 leading-relaxed">
+                          {safeText(m.wouldHaveHelped)}
+                        </p>
+                      </div>
+                    )}
+                    {m.canStillFix && m.fixAction && (
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
+                          Fix
+                        </div>
+                        <p className="text-[15px] text-foreground leading-relaxed">
+                          {safeText(m.fixAction)}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {m.canStillFix && m.fixAction && (
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-1">
-                      Fix
-                    </div>
-                    <p className="text-[15px] text-foreground leading-relaxed">
-                      {safeText(m.fixAction)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
+                </CollapsibleCard>
+              );
+            })}
+          </div>
+        </>
       )}
     </TabContainer>
   );
