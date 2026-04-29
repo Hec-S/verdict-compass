@@ -390,7 +390,8 @@ export function MatterSynthesisView({
   const isFailed = (key: SynthesisSubCallKey) => failed.has(key);
 
   const tabs: TabDef[] = useMemo(() => {
-    const contradictionsFailed = failed.has("contradictionsAdmissions");
+    const contradictionsFailed = failed.has("contradictions");
+    const admissionsFailed = failed.has("admissionsInventory");
     return [
       { id: "overview", label: "Overview", subCall: "strategicOverview" },
       {
@@ -417,16 +418,16 @@ export function MatterSynthesisView({
         label: "Contradictions",
         count: contradictionsFailed ? undefined : synthesis.contradictionMatrix.length,
         unavailableLabel: contradictionsFailed ? "unavailable" : undefined,
-        subCall: "contradictionsAdmissions",
+        subCall: "contradictions",
       },
       {
         id: "admissions",
         label: "Admissions",
-        count: contradictionsFailed
+        count: admissionsFailed
           ? undefined
           : synthesis.unifiedAdmissionsInventory.length,
-        unavailableLabel: contradictionsFailed ? "unavailable" : undefined,
-        subCall: "contradictionsAdmissions",
+        unavailableLabel: admissionsFailed ? "unavailable" : undefined,
+        subCall: "admissionsInventory",
       },
       { id: "bias", label: "Bias Narrative", subCall: "strategicOverview" },
       {
@@ -545,7 +546,7 @@ export function MatterSynthesisView({
         return (
           <ContradictionsTab
             data={synthesis.contradictionMatrix}
-            isFailed={isFailed("contradictionsAdmissions")}
+            isFailed={isFailed("contradictions")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -553,7 +554,7 @@ export function MatterSynthesisView({
         return (
           <AdmissionsTab
             data={synthesis.unifiedAdmissionsInventory}
-            isFailed={isFailed("contradictionsAdmissions")}
+            isFailed={isFailed("admissionsInventory")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -1500,7 +1501,7 @@ function ContradictionsTab({
       <TabContainer>
         <TabSectionHeader title="Contradiction matrix" />
         <UnavailableInline
-          subCallKey="contradictionsAdmissions"
+          subCallKey="contradictions"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1589,7 +1590,7 @@ function AdmissionsTab({
       <TabContainer>
         <TabSectionHeader title="Unified admissions inventory" />
         <UnavailableInline
-          subCallKey="contradictionsAdmissions"
+          subCallKey="admissionsInventory"
           onRerunFailed={onRerunFailed}
           block
         />

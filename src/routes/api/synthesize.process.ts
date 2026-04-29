@@ -50,16 +50,72 @@ function extractJSON(raw: string, label = "section"): Record<string, unknown> {
   try {
     return JSON.parse(slice);
   } catch (err) {
-    // Truncated JSON — attempt a best-effort recovery by trimming trailing
-    // partial content and closing open arrays/objects.
+    const errMsg = err instanceof Error ? err.message : String(err);
+    // Surface the byte position so we can see exactly where the model broke
+    // the JSON (e.g. "position 31378").
     console.warn(
-      `[synthesize.process] ${label} JSON.parse failed, attempting recovery:`,
-      err instanceof Error ? err.message : String(err),
+      `[synthesize.process] ${label} JSON.parse failed at ${errMsg}; total length=${slice.length}. Trying tolerant cleanup.`,
     );
+    // Tolerant pass 1: strip trailing commas before } or ] (a common Claude
+    // failure mode) and retry.
+    const noTrailingCommas = slice.replace(/,(\s*[}\]])/g, "$1");
+    if (noTrailingCommas !== slice) {
+      try {
+        return JSON.parse(noTrailingCommas);
+      } catch (err2) {
+        console.warn(
+          `[synthesize.process] ${label} retry after stripping trailing commas failed:`,
+          err2 instanceof Error ? err2.message : String(err2),
+        );
+      }
+    }
+    // Tolerant pass 2: best-effort recovery by trimming partial content and
+    // closing open arrays/objects.
     const recovered = tryRecoverJSON(slice);
     if (recovered) return recovered;
+    // Tolerant pass 3: try parsing just the first complete top-level object.
+    const firstObj = extractFirstCompleteObject(slice);
+    if (firstObj) {
+      try {
+        return JSON.parse(firstObj);
+      } catch {
+        /* fall through */
+      }
+    }
     throw err;
   }
+}
+
+/** Returns the substring containing the first complete balanced JSON object,
+ *  or null if no such object exists. Respects strings/escapes. */
+function extractFirstCompleteObject(s: string): string | null {
+  const start = s.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (c === "\\") {
+      escape = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 function tryRecoverJSON(s: string): Record<string, unknown> | null {
@@ -346,31 +402,125 @@ Rank EVERY deponent by how dangerous they are to the defense at trial. rank=1 is
   return runSubSynthesis(apiKey, "witnessThreats", userMessage, 4000);
 }
 
-export async function synthesizeContradictionsAndAdmissions(
+export async function synthesizeContradictions(
   apiKey: string,
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
   const shared = buildSharedInput(matter, cards);
-  const userMessage = `Produce the CONTRADICTIONS AND ADMISSIONS slice of the case-level defense synthesis.
+  const userMessage = `From the deposition cards below, identify every meaningful contradiction across witnesses where two or more witnesses gave incompatible testimony on the same factual point. Return ONLY this JSON shape with no other content:
 
-${shared}
-
-Return ONLY the following JSON keys and nothing else: contradictionMatrix, unifiedAdmissionsInventory.
-
-Schema:
 {
   "contradictionMatrix": [
-    { "topic": "", "witnesses": [ { "caseId": "", "deponentName": "", "position": "", "cite": "" } ], "exploitability": "high|medium|low", "defenseUse": "" }
-  ],
-  "unifiedAdmissionsInventory": [
-    { "topic": "", "admissions": [ { "caseId": "", "deponentName": "", "admission": "", "cite": "" } ], "trialUse": "" }
+    {
+      "topic": "short topic label, max 8 words",
+      "witnesses": [
+        {"caseId": "<id>", "deponentName": "<name>", "position": "<what they said, max 30 words>", "cite": "<page/line cite>"}
+      ],
+      "exploitability": "high|medium|low",
+      "defenseUse": "how defense uses this contradiction at trial, max 40 words"
+    }
   ]
 }
 
-contradictionMatrix: identify every meaningful contradiction across witnesses.
-unifiedAdmissionsInventory: group admissions by topic, not by witness. The most powerful admissions are supported by multiple witnesses.`;
-  return runSubSynthesis(apiKey, "contradictionsAdmissions", userMessage, 4000);
+Rules:
+- Return at most 8 contradictions, prioritized by exploitability
+- Each contradiction must have at least 2 witnesses
+- Each position must be 30 words or less
+- Each defenseUse must be 40 words or less
+- If you cannot find any meaningful contradictions, return an empty array. Do not invent contradictions to fill the array.
+
+${shared}`;
+
+  console.log(
+    `[CONTRADICTIONS] starting, sending ${userMessage.length} chars to Claude`,
+  );
+  const t = Date.now();
+  let raw: string;
+  try {
+    raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, 3000);
+  } catch (err) {
+    console.error(
+      `[CONTRADICTIONS] Claude call failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    throw err;
+  }
+  console.log(
+    `[CONTRADICTIONS] received response, length=${raw.length} (in ${Date.now() - t}ms)`,
+  );
+  console.log(`[CONTRADICTIONS] first 500 chars of response: ${raw.slice(0, 500)}`);
+  console.log(`[CONTRADICTIONS] last 500 chars of response: ${raw.slice(-500)}`);
+  console.log(`[CONTRADICTIONS] parse attempt...`);
+  try {
+    const parsed = extractJSON(raw, "sub:contradictions");
+    console.log(`[CONTRADICTIONS] parsed successfully`);
+    return parsed;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[CONTRADICTIONS] parse failed: ${msg}`);
+    throw new Error(`Contradictions parse failed: ${msg}`);
+  }
+}
+
+export async function synthesizeAdmissionsInventory(
+  apiKey: string,
+  matter: MatterRow,
+  cards: DepositionCard[],
+): Promise<Record<string, unknown>> {
+  const shared = buildSharedInput(matter, cards);
+  const userMessage = `From the deposition cards below, build a topic-grouped inventory of admissions that defense can use at trial. Group admissions by topic, not by witness. Topics with multi-witness support are highest priority. Return ONLY this JSON shape with no other content:
+
+{
+  "unifiedAdmissionsInventory": [
+    {
+      "topic": "specific topic label, max 10 words (e.g. 'Pre-existing L5-S1 fusion (2014)')",
+      "admissions": [
+        {"caseId": "<id>", "deponentName": "<name>", "admission": "<what they admitted, max 30 words>", "cite": "<page/line cite>"}
+      ],
+      "trialUse": "how to deploy this admission at trial, max 40 words"
+    }
+  ]
+}
+
+Rules:
+- Return at most 12 admission topics, prioritized by multi-witness support
+- Each admission entry must be 30 words or less
+- Each trialUse must be 40 words or less
+- Topics supported by 3+ witnesses come first
+- If you cannot find substantive admissions, return an empty array. Do not invent admissions to fill the array.
+
+${shared}`;
+
+  console.log(
+    `[ADMISSIONS] starting, sending ${userMessage.length} chars to Claude`,
+  );
+  const t = Date.now();
+  let raw: string;
+  try {
+    raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, 3000);
+  } catch (err) {
+    console.error(
+      `[ADMISSIONS] Claude call failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    throw err;
+  }
+  console.log(
+    `[ADMISSIONS] received response, length=${raw.length} (in ${Date.now() - t}ms)`,
+  );
+  console.log(`[ADMISSIONS] first 500 chars of response: ${raw.slice(0, 500)}`);
+  console.log(`[ADMISSIONS] last 500 chars of response: ${raw.slice(-500)}`);
+  console.log(`[ADMISSIONS] parse attempt...`);
+  try {
+    const parsed = extractJSON(raw, "sub:admissionsInventory");
+    console.log(`[ADMISSIONS] parsed successfully`);
+    return parsed;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[ADMISSIONS] parse failed: ${msg}`);
+    throw new Error(`Admissions inventory parse failed: ${msg}`);
+  }
 }
 
 export async function synthesizeCausationAndMethodology(
@@ -562,7 +712,8 @@ interface SubCall {
 const SUB_CALLS: SubCall[] = [
   { key: "strategicOverview", label: "Strategic Overview", progress: 87, message: "Synthesizing strategic overview", resultKeys: ["execSummary", "biasNarrative", "trialThemes"], fn: synthesizeStrategicOverview },
   { key: "witnessThreats", label: "Witness Threat Ranking", progress: 89, message: "Ranking witness threats", resultKeys: ["witnessThreatRanking"], fn: synthesizeWitnessThreats },
-  { key: "contradictionsAdmissions", label: "Contradictions & Admissions", progress: 92, message: "Mapping contradictions and admissions", resultKeys: ["contradictionMatrix", "unifiedAdmissionsInventory"], fn: synthesizeContradictionsAndAdmissions },
+  { key: "contradictions", label: "Contradictions", progress: 91, message: "Mapping contradictions", resultKeys: ["contradictionMatrix"], fn: synthesizeContradictions },
+  { key: "admissionsInventory", label: "Admissions Inventory", progress: 93, message: "Building admissions inventory", resultKeys: ["unifiedAdmissionsInventory"], fn: synthesizeAdmissionsInventory },
   { key: "causationMethodology", label: "Causation & Methodology", progress: 94, message: "Building causation and methodology challenges", resultKeys: ["causationAnalysis", "methodologyChallenges"], fn: synthesizeCausationAndMethodology },
   { key: "motionsDiscovery", label: "Motions & Discovery", progress: 96, message: "Drafting motions and discovery roadmap", resultKeys: ["motionsInLimine", "discoveryGaps"], fn: synthesizeMotionsAndDiscovery },
   { key: "retrospective", label: "Retrospective", progress: 98, message: "Identifying missed opportunities and next steps", resultKeys: ["whatWeMessedUp", "whatToDoNext"], fn: synthesizeRetrospective },
@@ -757,7 +908,7 @@ export async function runSynthesis(synthesisId: string) {
       error: finalStatus === "error" ? finalMessage : null,
     });
     console.log(
-      `[synthesize.process] ${synthesisId} ${finalStatus} (${successCount}/6 sub-calls succeeded)`,
+      `[synthesize.process] ${synthesisId} ${finalStatus} (${successCount}/${SUB_CALLS.length} sub-calls succeeded)`,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -790,8 +941,16 @@ export async function runSynthesisRetrySections(
     const apiKey = getEnv("ANTHROPIC_API_KEY");
     if (!apiKey) throw new Error("Anthropic API key not configured");
 
-    const validKeys = sectionKeys.filter((k) =>
-      SUB_CALLS.some((s) => s.key === k),
+    // Map any legacy section keys to their current equivalents. The combined
+    // "contradictionsAdmissions" sub-call has been split into two.
+    const remapped = sectionKeys.flatMap((k) => {
+      if (k === "contradictionsAdmissions") {
+        return ["contradictions", "admissionsInventory"];
+      }
+      return [k];
+    });
+    const validKeys = Array.from(
+      new Set(remapped.filter((k) => SUB_CALLS.some((s) => s.key === k))),
     );
     if (validKeys.length === 0) {
       throw new Error("No valid section keys to retry.");

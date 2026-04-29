@@ -228,7 +228,8 @@ export interface FailedSection {
 export const SYNTHESIS_SUB_CALL_KEYS = [
   "strategicOverview",
   "witnessThreats",
-  "contradictionsAdmissions",
+  "contradictions",
+  "admissionsInventory",
   "causationMethodology",
   "motionsDiscovery",
   "retrospective",
@@ -250,9 +251,13 @@ export const SYNTHESIS_SUB_CALLS: Record<
     label: "Witness Threat Ranking",
     resultKeys: ["witnessThreatRanking"],
   },
-  contradictionsAdmissions: {
-    label: "Contradictions & Admissions",
-    resultKeys: ["contradictionMatrix", "unifiedAdmissionsInventory"],
+  contradictions: {
+    label: "Contradictions",
+    resultKeys: ["contradictionMatrix"],
+  },
+  admissionsInventory: {
+    label: "Admissions Inventory",
+    resultKeys: ["unifiedAdmissionsInventory"],
   },
   causationMethodology: {
     label: "Causation & Methodology",
@@ -283,6 +288,15 @@ export function legacyLabelToSubCallKey(
         .replace(/&/g, "and") === norm
     )
       return key;
+  }
+  // Legacy combined sub-call: map to "contradictions" so the failure surfaces
+  // on at least one of the two new tabs.
+  if (
+    norm === "contradictionsadmissions" ||
+    norm === "contradictions & admissions" ||
+    norm === "contradictions and admissions"
+  ) {
+    return "contradictions";
   }
   return null;
 }
