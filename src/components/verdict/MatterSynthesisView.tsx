@@ -1046,14 +1046,14 @@ function MotionsTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Motions in limine" />
         <UnavailableInline
           subCallKey="motionsDiscovery"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   const priorityRank: Record<string, number> = {
@@ -1067,7 +1067,7 @@ function MotionsTab({
     return pa - pb;
   });
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Motions in limine" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">None recommended.</p>
@@ -1098,7 +1098,7 @@ function MotionsTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1115,18 +1115,18 @@ function MethodologyTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Methodology challenges" />
         <UnavailableInline
           subCallKey="causationMethodology"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Methodology challenges" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">None identified.</p>
@@ -1153,7 +1153,7 @@ function MethodologyTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1168,18 +1168,18 @@ function ContradictionsTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Contradiction matrix" />
         <UnavailableInline
           subCallKey="contradictionsAdmissions"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Contradiction matrix" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">
@@ -1242,7 +1242,7 @@ function ContradictionsTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1257,18 +1257,18 @@ function AdmissionsTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Unified admissions inventory" />
         <UnavailableInline
           subCallKey="contradictionsAdmissions"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Unified admissions inventory" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No admissions inventoried.</p>
@@ -1300,7 +1300,7 @@ function AdmissionsTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1315,20 +1315,20 @@ function BiasTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Bias narrative" />
         <UnavailableInline
           subCallKey="strategicOverview"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Bias narrative" />
-      <div className="space-y-8 max-w-[68ch]">
+      <div className="space-y-12">
         {data.pipelineMap && (
           <div>
             <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-2">
@@ -1388,7 +1388,7 @@ function BiasTab({
           </div>
         )}
       </div>
-    </>
+    </TabContainer>
   );
 }
 
@@ -1403,18 +1403,18 @@ function ThemesTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Trial themes" />
         <UnavailableInline
           subCallKey="strategicOverview"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Trial themes" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No themes identified.</p>
@@ -1474,7 +1474,7 @@ function ThemesTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1489,18 +1489,18 @@ function DiscoveryGapsTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="Discovery gaps" />
         <UnavailableInline
           subCallKey="motionsDiscovery"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="Discovery gaps" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No gaps identified.</p>
@@ -1532,7 +1532,7 @@ function DiscoveryGapsTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1547,14 +1547,14 @@ function MissedTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="What we missed" />
         <UnavailableInline
           subCallKey="retrospective"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   const sorted = data.slice().sort((a, b) => {
@@ -1564,7 +1564,7 @@ function MissedTab({
     return a.canStillFix ? -1 : 1;
   });
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="What we missed" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">Nothing flagged.</p>
@@ -1619,7 +1619,7 @@ function MissedTab({
           ))}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
 
@@ -1634,14 +1634,14 @@ function NextTab({
 }) {
   if (isFailed) {
     return (
-      <>
+      <TabContainer>
         <TabSectionHeader title="What to do next" />
         <UnavailableInline
           subCallKey="retrospective"
           onRerunFailed={onRerunFailed}
           block
         />
-      </>
+      </TabContainer>
     );
   }
   const groups: Array<{
@@ -1670,7 +1670,7 @@ function NextTab({
     },
   ];
   return (
-    <>
+    <TabContainer>
       <TabSectionHeader title="What to do next" count={data.length} />
       {data.length === 0 ? (
         <p className="text-[14px] text-muted-foreground italic">No actions queued.</p>
@@ -1709,6 +1709,6 @@ function NextTab({
           })}
         </div>
       )}
-    </>
+    </TabContainer>
   );
 }
