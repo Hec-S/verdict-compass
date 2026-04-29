@@ -14,6 +14,28 @@ import { Cite } from "./Panel";
 import type { CaseSynthesis } from "@/lib/analysis-types";
 import { SYNTHESIS_SUB_CALLS, type SynthesisSubCallKey } from "@/lib/analysis-types";
 
+/** AI-generated fields are typed as string in our schema, but the model
+ *  occasionally returns an object or array for a "string" slot (we've seen
+ *  e.g. accidentMechanism come back as `{ defenseTheory, accidentMechanicsCites }`).
+ *  Rendering that directly throws "Objects are not valid as a React child".
+ *  This helper coerces any value to a renderable string instead of crashing. */
+function safeText(value: unknown, fallback = ""): string {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return value.map((v) => safeText(v, "")).filter(Boolean).join(" · ");
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 // ---------------- Shared label maps ----------------
 
 const STRENGTH_LABEL: Record<CaseSynthesis["execSummary"]["caseStrength"], string> = {
