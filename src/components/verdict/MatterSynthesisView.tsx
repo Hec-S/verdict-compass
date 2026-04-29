@@ -326,7 +326,7 @@ export function MatterSynthesisView({
                     </div>
                     {w.summary && (
                       <p className="text-[13px] text-foreground/90 mt-1.5 leading-relaxed">
-                        {w.summary}
+                        {safeText(w.summary)}
                       </p>
                     )}
                   </div>
@@ -343,7 +343,7 @@ export function MatterSynthesisView({
                           className="text-[12.5px] text-foreground/85 leading-snug flex gap-2"
                         >
                           <span className="text-muted-foreground">›</span>
-                          <span>{cp}</span>
+                          <span>{safeText(cp)}</span>
                         </li>
                       ))}
                     </ul>
@@ -367,7 +367,7 @@ export function MatterSynthesisView({
           {synthesis.contradictionMatrix.map((row, i) => (
             <div key={i} className="border border-border p-3 print:break-inside-avoid">
               <div className="flex items-start gap-2 mb-2">
-                <h3 className="flex-1 text-[13px] font-medium text-foreground">{row.topic}</h3>
+                <h3 className="flex-1 text-[13px] font-medium text-foreground">{safeText(row.topic)}</h3>
                 <Badge tone={THREAT_TONE[row.exploitability] ?? THREAT_TONE.medium}>
                   {row.exploitability} exploitability
                 </Badge>
@@ -385,11 +385,11 @@ export function MatterSynthesisView({
                     {row.witnesses.map((w, j) => (
                       <tr key={j} className="border-b border-border/60 last:border-0 align-top">
                         <td className="py-1.5 pr-3 font-medium text-foreground whitespace-nowrap">
-                          {w.deponentName}
+                          {safeText(w.deponentName)}
                         </td>
-                        <td className="py-1.5 pr-3 text-foreground/90">{w.position}</td>
+                        <td className="py-1.5 pr-3 text-foreground/90">{safeText(w.position)}</td>
                         <td className="py-1.5 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
-                          {w.cite}
+                          {safeText(w.cite)}
                         </td>
                       </tr>
                     ))}
@@ -399,7 +399,7 @@ export function MatterSynthesisView({
               {row.defenseUse && (
                 <p className="text-[12.5px] text-foreground/90 mt-2 leading-relaxed">
                   <span className="text-muted-foreground">Defense use: </span>
-                  {row.defenseUse}
+                  {safeText(row.defenseUse)}
                 </p>
               )}
             </div>
@@ -422,20 +422,20 @@ export function MatterSynthesisView({
           )}
           {synthesis.unifiedAdmissionsInventory.map((row, i) => (
             <div key={i} className="border border-border p-3 print:break-inside-avoid">
-              <h3 className="text-[13px] font-medium text-foreground mb-2">{row.topic}</h3>
+              <h3 className="text-[13px] font-medium text-foreground mb-2">{safeText(row.topic)}</h3>
               <ul className="space-y-1.5 mb-2">
                 {row.admissions.map((a, j) => (
                   <li key={j} className="text-[12.5px] leading-snug">
-                    <span className="font-medium text-foreground">{a.deponentName}:</span>{" "}
-                    <span className="text-foreground/90">{a.admission}</span>
-                    {a.cite && <Cite>{a.cite}</Cite>}
+                    <span className="font-medium text-foreground">{safeText(a.deponentName)}:</span>{" "}
+                    <span className="text-foreground/90">{safeText(a.admission)}</span>
+                    {a.cite && <Cite>{safeText(a.cite)}</Cite>}
                   </li>
                 ))}
               </ul>
               {row.trialUse && (
                 <p className="text-[12.5px] text-foreground/90 leading-relaxed">
                   <span className="text-muted-foreground">Trial use: </span>
-                  {row.trialUse}
+                  {safeText(row.trialUse)}
                 </p>
               )}
             </div>
