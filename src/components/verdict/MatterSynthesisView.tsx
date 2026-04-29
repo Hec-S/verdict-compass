@@ -109,6 +109,34 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Bordered card container used to visually separate major sections inside
+ * a synthesis tab. Renders an optional small uppercase label at the top
+ * (16px gap before content), 32px padding, 1px border, 8px radius.
+ */
+function SectionCard({
+  label,
+  children,
+  className = "",
+}: {
+  label?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`border border-border rounded-lg bg-card/40 p-8 print:break-inside-avoid ${className}`}
+    >
+      {label != null && (
+        <div className="mb-4">
+          <SectionLabel>{label}</SectionLabel>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 /** Larger pill/badge used for headline status (case strength, posture). */
 function HeadlinePill({
   tone,
@@ -195,12 +223,10 @@ function UnavailableInline({
 
 function TabSectionHeader({ title, count }: { title: string; count?: number }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 mb-6 pb-3 border-b border-border">
-      <h2 className="text-[22px] font-semibold tracking-[-0.01em] text-foreground">
-        {title}
-      </h2>
+    <div className="flex items-baseline justify-between gap-4 mb-6">
+      <SectionLabel>{title}</SectionLabel>
       {typeof count === "number" && (
-        <span className="text-[13px] text-muted-foreground tabular-nums">
+        <span className="text-[12px] text-muted-foreground tabular-nums">
           {count} {count === 1 ? "item" : "items"}
         </span>
       )}
@@ -563,7 +589,15 @@ export function MatterSynthesisView({
       {/* Active tab content (screen) */}
       <main className="print:hidden">
         <div className="px-6 py-12">
-          <div key={currentTab}>{renderTab(currentTab)}</div>
+          <div key={currentTab}>
+            {currentTab === "overview" ? (
+              renderTab(currentTab)
+            ) : (
+              <TabContainer width="wide">
+                <SectionCard>{renderTab(currentTab)}</SectionCard>
+              </TabContainer>
+            )}
+          </div>
         </div>
       </main>
 
@@ -645,61 +679,64 @@ function OverviewTab({
     <>
       {/* Single-column upper sections */}
       <TabContainer>
-        {/* Defense theory */}
-        <section>
-          <SectionLabel>Defense theory</SectionLabel>
-          <p className="mt-4 text-[18px] leading-[1.6] text-foreground">
-            {safeText(exec.defenseTheory) || "No defense theory produced."}
-          </p>
-        </section>
-
-        {/* Case strength */}
-        <section className="mt-16">
-          <SectionLabel>Case strength</SectionLabel>
-          <div className="mt-4">
-            <HeadlinePill
-              tone={STRENGTH_HEADLINE_TONE[exec.caseStrength]}
-              size="default"
-            >
-              {STRENGTH_LABEL[exec.caseStrength]}
-            </HeadlinePill>
-          </div>
-          {exec.strengthRationale && (
-            <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
-              {safeText(exec.strengthRationale)}
+        <div className="space-y-6">
+          {/* Defense theory */}
+          <SectionCard label="Defense theory">
+            <p className="text-[18px] leading-[1.6] text-foreground">
+              {safeText(exec.defenseTheory) || "No defense theory produced."}
             </p>
-          )}
-        </section>
+          </SectionCard>
 
-        {/* Recommended posture */}
-        <section className="mt-16">
-          <SectionLabel>Recommended posture</SectionLabel>
-          <div className="mt-4">
-            <HeadlinePill tone="bg-foreground text-background" size="lg">
-              {POSTURE_LABEL[exec.recommendedPosture]}
-            </HeadlinePill>
-          </div>
-          {exec.postureRationale && (
-            <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
-              {safeText(exec.postureRationale)}
-            </p>
-          )}
-        </section>
+          {/* Case strength */}
+          <SectionCard label="Case strength">
+            <div>
+              <HeadlinePill
+                tone={STRENGTH_HEADLINE_TONE[exec.caseStrength]}
+                size="default"
+              >
+                {STRENGTH_LABEL[exec.caseStrength]}
+              </HeadlinePill>
+            </div>
+            {exec.strengthRationale && (
+              <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
+                {safeText(exec.strengthRationale)}
+              </p>
+            )}
+          </SectionCard>
+
+          {/* Recommended posture */}
+          <SectionCard label="Recommended posture">
+            <div>
+              <HeadlinePill tone="bg-foreground text-background" size="lg">
+                {POSTURE_LABEL[exec.recommendedPosture]}
+              </HeadlinePill>
+            </div>
+            {exec.postureRationale && (
+              <p className="mt-4 text-[16px] leading-[1.6] text-foreground">
+                {safeText(exec.postureRationale)}
+              </p>
+            )}
+          </SectionCard>
+        </div>
       </TabContainer>
 
       {/* Two-column threats / opportunities — wider container */}
       <TabContainer width="wide">
-        <div className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
-          <NumberedEditorialList
-            label="Top threats"
-            items={exec.topThreats.map((t) => safeText(t))}
-            emptyText="None identified."
-          />
-          <NumberedEditorialList
-            label="Top opportunities"
-            items={exec.topOpportunities.map((t) => safeText(t))}
-            emptyText="None identified."
-          />
+        <div className="mt-6">
+          <SectionCard>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-12">
+              <NumberedEditorialList
+                label="Top threats"
+                items={exec.topThreats.map((t) => safeText(t))}
+                emptyText="None identified."
+              />
+              <NumberedEditorialList
+                label="Top opportunities"
+                items={exec.topOpportunities.map((t) => safeText(t))}
+                emptyText="None identified."
+              />
+            </div>
+          </SectionCard>
         </div>
       </TabContainer>
     </>
