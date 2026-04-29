@@ -1406,11 +1406,25 @@ export async function runSynthesisRetrySections(
     const apiKey = getEnv("ANTHROPIC_API_KEY");
     if (!apiKey) throw new Error("Anthropic API key not configured");
 
-    // Map any legacy section keys to their current equivalents. The combined
-    // "contradictionsAdmissions" sub-call has been split into two.
+    // Map any legacy section keys to their current equivalents. Several
+    // combined sub-calls have been split into single-deliverable ones; when a
+    // user asks to retry an old key, expand it to the full set of new keys
+    // that replaced it.
     const remapped = sectionKeys.flatMap((k) => {
       if (k === "contradictionsAdmissions") {
         return ["contradictions", "admissionsInventory"];
+      }
+      if (k === "strategicOverview") {
+        return ["execSummary", "biasNarrative", "trialThemes"];
+      }
+      if (k === "causationMethodology") {
+        return ["causationAnalysis", "methodologyChallenges"];
+      }
+      if (k === "motionsDiscovery") {
+        return ["motionsInLimine", "discoveryGaps"];
+      }
+      if (k === "retrospective") {
+        return ["whatWeMessedUp", "whatToDoNext"];
       }
       return [k];
     });
