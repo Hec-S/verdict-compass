@@ -424,6 +424,98 @@ DEPOSITION CARDS (${cards.length} witnesses):
 ${JSON.stringify(cards, null, 2)}`;
 }
 
+// ---------------- Per-section card trimming ----------------
+//
+// Each Stage B sub-call only needs a subset of the DepositionCard fields.
+// Sending the full card to every sub-call inflates input tokens by 40-60%
+// and is the main driver of our 429s on the admissions/contradictions calls.
+// trimCardForSection returns a minimal projection per section.
+
+type SectionKey =
+  | "strategicOverview"
+  | "witnessThreats"
+  | "contradictions"
+  | "admissionsInventory"
+  | "causationMethodology"
+  | "motionsDiscovery"
+  | "retrospective"
+  | "trialThemes";
+
+function trimCardForSection(
+  card: DepositionCard,
+  section: SectionKey,
+): Partial<DepositionCard> & { caseId: string; deponentName: string } {
+  const base = { caseId: card.caseId, deponentName: card.deponentName };
+  switch (section) {
+    case "strategicOverview":
+    case "witnessThreats":
+      // Headline analyses get the full card.
+      return card;
+    case "contradictions":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        keyAdmissions: card.keyAdmissions,
+        contradictionsWithOtherWitnesses: card.contradictionsWithOtherWitnesses,
+        priorConditionsDisclosed: card.priorConditionsDisclosed,
+      };
+    case "admissionsInventory":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        keyAdmissions: card.keyAdmissions,
+        priorConditionsDisclosed: card.priorConditionsDisclosed,
+        vulnerabilities: card.vulnerabilities,
+      };
+    case "causationMethodology":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        priorConditionsDisclosed: card.priorConditionsDisclosed,
+        contradictionsWithOtherWitnesses: card.contradictionsWithOtherWitnesses,
+        methodologyIssues: card.methodologyIssues,
+        biasIndicators: card.biasIndicators,
+        vulnerabilities: card.vulnerabilities,
+      };
+    case "motionsDiscovery":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        methodologyIssues: card.methodologyIssues,
+        biasIndicators: card.biasIndicators,
+        vulnerabilities: card.vulnerabilities,
+        keyAdmissions: card.keyAdmissions,
+        unresolvedQuestions: card.unresolvedQuestions,
+      };
+    case "retrospective":
+      return {
+        ...base,
+        vulnerabilities: card.vulnerabilities,
+        unresolvedQuestions: card.unresolvedQuestions,
+      };
+    case "trialThemes":
+      return {
+        ...base,
+        deponentRole: card.deponentRole,
+        keyAdmissions: card.keyAdmissions,
+        biasIndicators: card.biasIndicators,
+      };
+  }
+}
+
+function buildSectionInput(
+  matter: MatterRow,
+  cards: DepositionCard[],
+  section: SectionKey,
+): string {
+  const trimmed = cards.map((c) => trimCardForSection(c, section));
+  return `MATTER: ${matter.name}
+DESCRIPTION: ${matter.description ?? ""}
+
+DEPOSITION CARDS (${cards.length} witnesses):
+${JSON.stringify(trimmed, null, 2)}`;
+}
+
 async function runSubSynthesis(
   apiKey: string,
   label: string,
@@ -431,7 +523,13 @@ async function runSubSynthesis(
   maxTokens: number,
 ): Promise<Record<string, unknown>> {
   const t = Date.now();
-  const raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, maxTokens);
+  const raw = await callClaudeThrottled(
+    apiKey,
+    CASE_SYNTHESIS_SYSTEM,
+    userMessage,
+    maxTokens,
+    label,
+  );
   console.log(
     `[synthesize.process] sub:${label} ok in ${Date.now() - t}ms (${raw.length} chars)`,
   );
@@ -451,7 +549,7 @@ export async function synthesizeStrategicOverview(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "strategicOverview");
   const userMessage = `Produce the STRATEGIC OVERVIEW slice of the case-level defense synthesis.
 
 ${shared}
@@ -489,7 +587,7 @@ export async function synthesizeWitnessThreats(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "witnessThreats");
   const userMessage = `Produce the WITNESS THREAT RANKING slice of the case-level defense synthesis.
 
 ${shared}
@@ -512,28 +610,44 @@ export async function synthesizeContradictions(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "contradictions");
   const userMessage = `From the deposition cards below, identify every meaningful contradiction across witnesses where two or more witnesses gave incompatible testimony on the same factual point. Return ONLY this JSON shape with no other content:
 
 {
   "contradictionMatrix": [
     {
-      "topic": "short topic label, max 8 words",
+      "topic": "short topic label, max 6 words",
       "witnesses": [
-        {"caseId": "<id>", "deponentName": "<name>", "position": "<what they said, max 30 words>", "cite": "<page/line cite>"}
+        {"caseId": "<id>", "deponentName": "<name>", "position": "<what they said, max 25 words>", "cite": "<page/line cite>"}
       ],
       "exploitability": "high|medium|low",
-      "defenseUse": "how defense uses this contradiction at trial, max 40 words"
+      "defenseUse": "how defense uses this contradiction at trial, max 30 words"
     }
   ]
 }
 
 Rules:
-- Return at most 8 contradictions, prioritized by exploitability
-- Each contradiction must have at least 2 witnesses
-- Each position must be 30 words or less
-- Each defenseUse must be 40 words or less
+- Return at most 6 contradictions, prioritized by exploitability.
+- Each contradiction must have at least 2 witnesses.
+- topic: 6 words max. position: 25 words max. defenseUse: 30 words max.
 - If you cannot find any meaningful contradictions, return an empty array. Do not invent contradictions to fill the array.
+
+Example of correct output format:
+{
+  "contradictionMatrix": [
+    {
+      "topic": "Phone use at impact",
+      "witnesses": [
+        {"caseId": "abc-123", "deponentName": "Plaintiff", "position": "defendant was on phone immediately before collision", "cite": "p.18 lines 3-7"},
+        {"caseId": "def-456", "deponentName": "Defendant", "position": "checked phone after impact to note time", "cite": "p.32 lines 11-15"}
+      ],
+      "exploitability": "medium",
+      "defenseUse": "impeach plaintiff's claim defendant was distracted before collision"
+    }
+  ]
+}
+
+Your response must end with the closing brace } of the contradictionMatrix wrapper. Verify the JSON is complete and valid before responding. If you cannot fit all desired contradictions within the response length, return fewer contradictions rather than truncated JSON.
 
 ${shared}`;
 
@@ -543,7 +657,13 @@ ${shared}`;
   const t = Date.now();
   let raw: string;
   try {
-    raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, 3000);
+    raw = await callClaudeThrottled(
+      apiKey,
+      CASE_SYNTHESIS_SYSTEM,
+      userMessage,
+      3000,
+      "contradictions",
+    );
   } catch (err) {
     console.error(
       `[CONTRADICTIONS] Claude call failed:`,
@@ -573,7 +693,7 @@ export async function synthesizeAdmissionsInventory(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "admissionsInventory");
   const userMessage = `From the deposition cards below, build a topic-grouped inventory of admissions that defense can use at trial. Group admissions by topic, not by witness. Topics with multi-witness support are highest priority. Return ONLY this JSON shape with no other content:
 
 {
@@ -603,7 +723,13 @@ ${shared}`;
   const t = Date.now();
   let raw: string;
   try {
-    raw = await callClaude(apiKey, CASE_SYNTHESIS_SYSTEM, userMessage, 3000);
+    raw = await callClaudeThrottled(
+      apiKey,
+      CASE_SYNTHESIS_SYSTEM,
+      userMessage,
+      3000,
+      "admissionsInventory",
+    );
   } catch (err) {
     console.error(
       `[ADMISSIONS] Claude call failed:`,
@@ -633,7 +759,7 @@ export async function synthesizeCausationAndMethodology(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "causationMethodology");
   const userMessage = `Produce the CAUSATION AND METHODOLOGY slice of the case-level defense synthesis.
 
 ${shared}
@@ -663,7 +789,7 @@ export async function synthesizeMotionsAndDiscovery(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "motionsDiscovery");
   const userMessage = `Produce the MOTIONS AND DISCOVERY slice of the case-level defense synthesis.
 
 ${shared}
@@ -690,7 +816,7 @@ export async function synthesizeRetrospective(
   matter: MatterRow,
   cards: DepositionCard[],
 ): Promise<Record<string, unknown>> {
-  const shared = buildSharedInput(matter, cards);
+  const shared = buildSectionInput(matter, cards, "retrospective");
   const userMessage = `Produce the RETROSPECTIVE slice of the case-level defense synthesis.
 
 ${shared}
