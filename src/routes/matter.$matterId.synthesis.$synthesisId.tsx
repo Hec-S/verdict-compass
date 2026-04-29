@@ -10,10 +10,10 @@ import {
   getSynthesisFromDb,
   markSynthesisProcessorNeverStarted,
   submitSynthesis,
+  retryFailedSections,
 } from "@/lib/synthesis-db";
 import { getMatterFromDb } from "@/lib/matters-db";
 import type { MatterSynthesisRow } from "@/lib/analysis-types";
-import { SYNTHESIS_SUB_CALLS } from "@/lib/analysis-types";
 import type { CaseListRow } from "@/lib/cases-db";
 import {
   AlertDialog,
@@ -37,15 +37,12 @@ export const Route = createFileRoute(
 
 const SYNTHESIS_START_TIMEOUT_MS = 60 * 1000;
 
-function sectionLabel(key: string): string {
-  return SYNTHESIS_SUB_CALLS[key as keyof typeof SYNTHESIS_SUB_CALLS]?.label ?? key;
-}
-
 function MatterSynthesisPage() {
   const { matterId, synthesisId } = Route.useParams();
   const navigate = useNavigate();
   const [synth, setSynth] = useState<MatterSynthesisRow | null>(null);
   const [cases, setCases] = useState<CaseListRow[]>([]);
+  const [matterName, setMatterName] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [rerunning, setRerunning] = useState(false);
@@ -62,6 +59,7 @@ function MatterSynthesisPage() {
         } else {
           setSynth(row);
           setCases(matter?.cases ?? []);
+          setMatterName(matter?.matter.name ?? "");
         }
       })
       .catch((e) => {
@@ -149,13 +147,30 @@ function MatterSynthesisPage() {
     }
   }
 
+  async function handleRerunFailed() {
+    if (!synth) return;
+    const keys = synth.failedSections.map((f) => f.section);
+    if (keys.length === 0) return;
+    setRerunning(true);
+    try {
+      await retryFailedSections(synth.id, keys);
+      const refreshed = await getSynthesisFromDb(synth.id);
+      if (refreshed) setSynth(refreshed);
+      toast.success("Re-running failed sections…");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to re-run sections.");
+    } finally {
+      setRerunning(false);
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <div className="print:hidden">
         <SiteHeader />
       </div>
       <main className="flex-1">
-        <section className="max-w-[880px] mx-auto px-8 pt-10 pb-2 print:hidden">
+        <section className="max-w-[1200px] mx-auto px-6 lg:px-8 pt-8 pb-2 print:hidden">
           <Link
             to="/matter/$id"
             params={{ id: matterId }}
@@ -164,20 +179,13 @@ function MatterSynthesisPage() {
             ‹ Back to matter
           </Link>
         </section>
-        <section className="max-w-[880px] mx-auto px-8 pt-6 pb-8 print:max-w-none print:px-6 print:pt-2">
+        <section className="max-w-[1200px] mx-auto px-6 lg:px-8 pt-4 pb-12 print:max-w-none print:px-6 print:pt-2">
           {loading && <p className="text-[13px] text-muted-foreground">Loading…</p>}
           {error && !loading && (
             <p className="text-[13px] text-destructive">{error}</p>
           )}
           {synth && !loading && (
             <>
-              <h1 className="text-[22px] font-medium tracking-[-0.01em] mb-2 print:text-[18px]">
-                Matter Synthesis
-              </h1>
-              <p className="text-[12px] text-muted-foreground mb-6">
-                Status: {synth.status} · {synth.caseIds.length}{" "}
-                {synth.caseIds.length === 1 ? "case" : "cases"} included
-              </p>
               {synth.status !== "complete" &&
                 synth.status !== "complete_with_errors" &&
                 synth.status !== "error" && (
@@ -205,27 +213,17 @@ function MatterSynthesisPage() {
                 synth.status === "complete_with_errors") &&
                 synth.result && (
                 <>
-                  {synth.status === "complete_with_errors" &&
-                    synth.failedSections.length > 0 && (
-                      <div className="mb-6 border border-amber-500/40 bg-amber-500/10 p-4 print:hidden">
-                        <p className="text-[13px] text-foreground">
-                          Some synthesis sections could not be generated:{" "}
-                          <span className="font-medium">
-                            {synth.failedSections
-                              .map((f) => sectionLabel(f.section))
-                              .join(", ")}
-                          </span>
-                          . The rest of the synthesis is available below.
-                        </p>
-                      </div>
-                    )}
                 <ErrorBoundary label="the synthesis report">
                   <MatterSynthesisView
                     synthesis={synth.result}
                     caseLabels={caseLabels}
                     failedSubCallKeys={synth.failedSections.map((f) => f.section)}
                     onRerun={handleRerun}
+                    onRerunFailed={() => void handleRerunFailed()}
                     rerunDisabled={rerunning}
+                    matterName={matterName || "Matter Synthesis"}
+                    statusLabel={synth.status}
+                    lastRunAt={synth.createdAt}
                   />
                 </ErrorBoundary>
                 </>
