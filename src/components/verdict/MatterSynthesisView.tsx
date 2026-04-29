@@ -393,25 +393,25 @@ export function MatterSynthesisView({
     const contradictionsFailed = failed.has("contradictions");
     const admissionsFailed = failed.has("admissionsInventory");
     return [
-      { id: "overview", label: "Overview", subCall: "strategicOverview" },
+      { id: "overview", label: "Overview", subCall: "execSummary" },
       {
         id: "witnesses",
         label: "Witnesses",
         count: synthesis.witnessThreatRanking.length,
         subCall: "witnessThreats",
       },
-      { id: "causation", label: "Causation", subCall: "causationMethodology" },
+      { id: "causation", label: "Causation", subCall: "causationAnalysis" },
       {
         id: "motions",
         label: "Motions",
         count: synthesis.motionsInLimine.length,
-        subCall: "motionsDiscovery",
+        subCall: "motionsInLimine",
       },
       {
         id: "methodology",
         label: "Methodology",
         count: synthesis.methodologyChallenges.length,
-        subCall: "causationMethodology",
+        subCall: "methodologyChallenges",
       },
       {
         id: "contradictions",
@@ -429,30 +429,30 @@ export function MatterSynthesisView({
         unavailableLabel: admissionsFailed ? "unavailable" : undefined,
         subCall: "admissionsInventory",
       },
-      { id: "bias", label: "Bias Narrative", subCall: "strategicOverview" },
+      { id: "bias", label: "Bias Narrative", subCall: "biasNarrative" },
       {
         id: "themes",
         label: "Trial Themes",
         count: synthesis.trialThemes.length,
-        subCall: "strategicOverview",
+        subCall: "trialThemes",
       },
       {
         id: "discovery",
         label: "Discovery Gaps",
         count: synthesis.discoveryGaps.length,
-        subCall: "motionsDiscovery",
+        subCall: "discoveryGaps",
       },
       {
         id: "missed",
         label: "What We Missed",
         count: synthesis.whatWeMessedUp.length,
-        subCall: "retrospective",
+        subCall: "whatWeMessedUp",
       },
       {
         id: "next",
         label: "What To Do Next",
         count: synthesis.whatToDoNext.length,
-        subCall: "retrospective",
+        subCall: "whatToDoNext",
       },
     ];
   }, [synthesis, failed]);
@@ -490,7 +490,7 @@ export function MatterSynthesisView({
       <div className="synthesis-view">
         <DefenseTheorySection
           exec={exec}
-          isFailed={isFailed("strategicOverview")}
+          isFailed={isFailed("execSummary")}
           onRerunFailed={onRerunFailed}
         />
       </div>
@@ -504,7 +504,7 @@ export function MatterSynthesisView({
         return (
           <OverviewTab
             exec={exec}
-            isFailed={isFailed("strategicOverview")}
+            isFailed={isFailed("execSummary")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -521,7 +521,7 @@ export function MatterSynthesisView({
         return (
           <CausationTab
             data={synthesis.causationAnalysis}
-            isFailed={isFailed("causationMethodology")}
+            isFailed={isFailed("causationAnalysis")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -529,7 +529,7 @@ export function MatterSynthesisView({
         return (
           <MotionsTab
             data={synthesis.motionsInLimine}
-            isFailed={isFailed("motionsDiscovery")}
+            isFailed={isFailed("motionsInLimine")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -537,7 +537,7 @@ export function MatterSynthesisView({
         return (
           <MethodologyTab
             data={synthesis.methodologyChallenges}
-            isFailed={isFailed("causationMethodology")}
+            isFailed={isFailed("methodologyChallenges")}
             onRerunFailed={onRerunFailed}
             labelFor={labelFor}
           />
@@ -562,7 +562,7 @@ export function MatterSynthesisView({
         return (
           <BiasTab
             data={synthesis.biasNarrative}
-            isFailed={isFailed("strategicOverview")}
+            isFailed={isFailed("biasNarrative")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -570,7 +570,7 @@ export function MatterSynthesisView({
         return (
           <ThemesTab
             data={synthesis.trialThemes}
-            isFailed={isFailed("strategicOverview")}
+            isFailed={isFailed("trialThemes")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -578,7 +578,7 @@ export function MatterSynthesisView({
         return (
           <DiscoveryGapsTab
             data={synthesis.discoveryGaps}
-            isFailed={isFailed("motionsDiscovery")}
+            isFailed={isFailed("discoveryGaps")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -586,7 +586,7 @@ export function MatterSynthesisView({
         return (
           <MissedTab
             data={synthesis.whatWeMessedUp}
-            isFailed={isFailed("retrospective")}
+            isFailed={isFailed("whatWeMessedUp")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -594,7 +594,7 @@ export function MatterSynthesisView({
         return (
           <NextTab
             data={synthesis.whatToDoNext}
-            isFailed={isFailed("retrospective")}
+            isFailed={isFailed("whatToDoNext")}
             onRerunFailed={onRerunFailed}
           />
         );
@@ -775,7 +775,7 @@ function OverviewTab({
   if (isFailed) {
     return (
       <TabContainer>
-        <UnavailableInline subCallKey="strategicOverview" onRerunFailed={onRerunFailed} block />
+        <UnavailableInline subCallKey="execSummary" onRerunFailed={onRerunFailed} block />
       </TabContainer>
     );
   }
@@ -921,7 +921,7 @@ function DefenseTheorySection({
   onRerunFailed?: () => void;
 }) {
   if (isFailed) {
-    return <UnavailableInline subCallKey="strategicOverview" onRerunFailed={onRerunFailed} />;
+    return <UnavailableInline subCallKey="execSummary" onRerunFailed={onRerunFailed} />;
   }
   return (
     <div className="border border-border p-6">
@@ -1214,7 +1214,7 @@ function CausationTab({
         <SectionCard>
           <TabSectionHeader title="Causation analysis" />
           <UnavailableInline
-            subCallKey="causationMethodology"
+            subCallKey="causationAnalysis"
             onRerunFailed={onRerunFailed}
             block
           />
@@ -1346,7 +1346,7 @@ function MotionsTab({
       <TabContainer>
         <TabSectionHeader title="Motions in limine" />
         <UnavailableInline
-          subCallKey="motionsDiscovery"
+          subCallKey="motionsInLimine"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1430,7 +1430,7 @@ function MethodologyTab({
       <TabContainer>
         <TabSectionHeader title="Methodology challenges" />
         <UnavailableInline
-          subCallKey="causationMethodology"
+          subCallKey="methodologyChallenges"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1648,7 +1648,7 @@ function BiasTab({
       <TabContainer>
         <TabSectionHeader title="Bias narrative" />
         <UnavailableInline
-          subCallKey="strategicOverview"
+          subCallKey="biasNarrative"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1736,7 +1736,7 @@ function ThemesTab({
       <TabContainer>
         <TabSectionHeader title="Trial themes" />
         <UnavailableInline
-          subCallKey="strategicOverview"
+          subCallKey="trialThemes"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1846,7 +1846,7 @@ function DiscoveryGapsTab({
       <TabContainer>
         <TabSectionHeader title="Discovery gaps" />
         <UnavailableInline
-          subCallKey="motionsDiscovery"
+          subCallKey="discoveryGaps"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1922,7 +1922,7 @@ function MissedTab({
       <TabContainer>
         <TabSectionHeader title="What we missed" />
         <UnavailableInline
-          subCallKey="retrospective"
+          subCallKey="whatWeMessedUp"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -2024,7 +2024,7 @@ function NextTab({
       <TabContainer>
         <TabSectionHeader title="What to do next" />
         <UnavailableInline
-          subCallKey="retrospective"
+          subCallKey="whatToDoNext"
           onRerunFailed={onRerunFailed}
           block
         />

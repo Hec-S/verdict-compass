@@ -226,13 +226,18 @@ export interface FailedSection {
 /** Internal keys for the six Stage B sub-calls. Used as the canonical
  *  identifier for re-running individual failed sections. */
 export const SYNTHESIS_SUB_CALL_KEYS = [
-  "strategicOverview",
+  "execSummary",
+  "biasNarrative",
+  "trialThemes",
   "witnessThreats",
   "contradictions",
   "admissionsInventory",
-  "causationMethodology",
-  "motionsDiscovery",
-  "retrospective",
+  "causationAnalysis",
+  "methodologyChallenges",
+  "motionsInLimine",
+  "discoveryGaps",
+  "whatWeMessedUp",
+  "whatToDoNext",
 ] as const;
 export type SynthesisSubCallKey = (typeof SYNTHESIS_SUB_CALL_KEYS)[number];
 
@@ -243,12 +248,11 @@ export const SYNTHESIS_SUB_CALLS: Record<
   SynthesisSubCallKey,
   { label: string; resultKeys: Array<keyof CaseSynthesis> }
 > = {
-  strategicOverview: {
-    label: "Strategic Overview",
-    resultKeys: ["execSummary", "biasNarrative", "trialThemes"],
-  },
+  execSummary: { label: "Executive Summary", resultKeys: ["execSummary"] },
+  biasNarrative: { label: "Bias Narrative", resultKeys: ["biasNarrative"] },
+  trialThemes: { label: "Trial Themes", resultKeys: ["trialThemes"] },
   witnessThreats: {
-    label: "Witness Threat Ranking",
+    label: "Witness Threats",
     resultKeys: ["witnessThreatRanking"],
   },
   contradictions: {
@@ -259,18 +263,24 @@ export const SYNTHESIS_SUB_CALLS: Record<
     label: "Admissions Inventory",
     resultKeys: ["unifiedAdmissionsInventory"],
   },
-  causationMethodology: {
-    label: "Causation & Methodology",
-    resultKeys: ["causationAnalysis", "methodologyChallenges"],
+  causationAnalysis: {
+    label: "Causation Analysis",
+    resultKeys: ["causationAnalysis"],
   },
-  motionsDiscovery: {
-    label: "Motions & Discovery",
-    resultKeys: ["motionsInLimine", "discoveryGaps"],
+  methodologyChallenges: {
+    label: "Methodology Challenges",
+    resultKeys: ["methodologyChallenges"],
   },
-  retrospective: {
-    label: "Retrospective",
-    resultKeys: ["whatWeMessedUp", "whatToDoNext"],
+  motionsInLimine: {
+    label: "Motions in Limine",
+    resultKeys: ["motionsInLimine"],
   },
+  discoveryGaps: { label: "Discovery Gaps", resultKeys: ["discoveryGaps"] },
+  whatWeMessedUp: {
+    label: "Missed Opportunities",
+    resultKeys: ["whatWeMessedUp"],
+  },
+  whatToDoNext: { label: "Next Steps", resultKeys: ["whatToDoNext"] },
 };
 
 /** Reverse lookup so that legacy rows (which stored labels like
@@ -289,14 +299,34 @@ export function legacyLabelToSubCallKey(
     )
       return key;
   }
-  // Legacy combined sub-call: map to "contradictions" so the failure surfaces
-  // on at least one of the two new tabs.
+  // Legacy combined sub-calls: map to a representative new key so failures
+  // surface on at least one tab.
   if (
     norm === "contradictionsadmissions" ||
     norm === "contradictions & admissions" ||
     norm === "contradictions and admissions"
   ) {
     return "contradictions";
+  }
+  if (norm === "strategic overview" || norm === "strategicoverview") {
+    return "execSummary";
+  }
+  if (
+    norm === "causation & methodology" ||
+    norm === "causation and methodology" ||
+    norm === "causationmethodology"
+  ) {
+    return "causationAnalysis";
+  }
+  if (
+    norm === "motions & discovery" ||
+    norm === "motions and discovery" ||
+    norm === "motionsdiscovery"
+  ) {
+    return "motionsInLimine";
+  }
+  if (norm === "retrospective") {
+    return "whatWeMessedUp";
   }
   return null;
 }
