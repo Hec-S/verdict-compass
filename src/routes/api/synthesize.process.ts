@@ -941,8 +941,16 @@ export async function runSynthesisRetrySections(
     const apiKey = getEnv("ANTHROPIC_API_KEY");
     if (!apiKey) throw new Error("Anthropic API key not configured");
 
-    const validKeys = sectionKeys.filter((k) =>
-      SUB_CALLS.some((s) => s.key === k),
+    // Map any legacy section keys to their current equivalents. The combined
+    // "contradictionsAdmissions" sub-call has been split into two.
+    const remapped = sectionKeys.flatMap((k) => {
+      if (k === "contradictionsAdmissions") {
+        return ["contradictions", "admissionsInventory"];
+      }
+      return [k];
+    });
+    const validKeys = Array.from(
+      new Set(remapped.filter((k) => SUB_CALLS.some((s) => s.key === k))),
     );
     if (validKeys.length === 0) {
       throw new Error("No valid section keys to retry.");
