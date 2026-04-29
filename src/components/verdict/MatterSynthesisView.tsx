@@ -137,6 +137,121 @@ function SectionCard({
   );
 }
 
+/**
+ * Hook that manages an expand/collapse set keyed by string id.
+ * Provides toggle, isOpen, expandAll, collapseAll, and a count of open items.
+ */
+function useCollapsibleSet(allKeys: string[]) {
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const isOpen = (k: string) => open.has(k);
+  const toggle = (k: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  const expandAll = () => setOpen(new Set(allKeys));
+  const collapseAll = () => setOpen(new Set());
+  const setOnly = (k: string) => setOpen(new Set([k]));
+  return { isOpen, toggle, expandAll, collapseAll, setOnly, openCount: open.size };
+}
+
+/** Small text-style buttons for "Expand all" / "Collapse all". */
+function ExpandCollapseControls({
+  onExpandAll,
+  onCollapseAll,
+}: {
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 mb-4 print:hidden justify-end">
+      <button
+        type="button"
+        onClick={onExpandAll}
+        className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Expand all
+      </button>
+      <span className="text-muted-foreground/40">·</span>
+      <button
+        type="button"
+        onClick={onCollapseAll}
+        className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Collapse all
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Collapsible card with always-visible header (rank/title + meta) and an
+ * animated body. Click anywhere on the header toggles expand/collapse.
+ */
+function CollapsibleCard({
+  id,
+  open,
+  onToggle,
+  rank,
+  header,
+  meta,
+  emphasis = false,
+  children,
+}: {
+  id?: string;
+  open: boolean;
+  onToggle: () => void;
+  rank?: React.ReactNode;
+  header: React.ReactNode;
+  meta?: React.ReactNode;
+  emphasis?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <article
+      id={id}
+      className={`border rounded-lg print:break-inside-avoid ${
+        emphasis ? "border-foreground/50" : "border-border"
+      } ${open ? "bg-card/40" : ""}`}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-foreground/[0.03] transition-colors rounded-lg"
+      >
+        {rank !== undefined && (
+          <span className="shrink-0 tabular-nums text-[24px] leading-none text-muted-foreground font-medium w-9">
+            {rank}
+          </span>
+        )}
+        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+          {header}
+        </div>
+        {meta && <div className="shrink-0 hidden md:flex items-center gap-2">{meta}</div>}
+        <ChevronDown
+          size={18}
+          className={`shrink-0 text-muted-foreground transition-transform duration-200 ${
+            open ? "rotate-180" : ""
+          }`}
+          aria-hidden="true"
+        />
+      </button>
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 ease-out print:!grid-rows-[1fr] ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="px-5 pb-5 pt-1 border-t border-border/60">{children}</div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 /** Larger pill/badge used for headline status (case strength, posture). */
 function HeadlinePill({
   tone,
