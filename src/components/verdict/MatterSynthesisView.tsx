@@ -775,7 +775,7 @@ function OverviewTab({
   if (isFailed) {
     return (
       <TabContainer>
-        <UnavailableInline subCallKey="strategicOverview" onRerunFailed={onRerunFailed} block />
+        <UnavailableInline subCallKey="execSummary" onRerunFailed={onRerunFailed} block />
       </TabContainer>
     );
   }
@@ -921,7 +921,7 @@ function DefenseTheorySection({
   onRerunFailed?: () => void;
 }) {
   if (isFailed) {
-    return <UnavailableInline subCallKey="strategicOverview" onRerunFailed={onRerunFailed} />;
+    return <UnavailableInline subCallKey="execSummary" onRerunFailed={onRerunFailed} />;
   }
   return (
     <div className="border border-border p-6">
@@ -1214,7 +1214,7 @@ function CausationTab({
         <SectionCard>
           <TabSectionHeader title="Causation analysis" />
           <UnavailableInline
-            subCallKey="causationMethodology"
+            subCallKey="causationAnalysis"
             onRerunFailed={onRerunFailed}
             block
           />
@@ -1346,7 +1346,7 @@ function MotionsTab({
       <TabContainer>
         <TabSectionHeader title="Motions in limine" />
         <UnavailableInline
-          subCallKey="motionsDiscovery"
+          subCallKey="motionsInLimine"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1430,7 +1430,7 @@ function MethodologyTab({
       <TabContainer>
         <TabSectionHeader title="Methodology challenges" />
         <UnavailableInline
-          subCallKey="causationMethodology"
+          subCallKey="methodologyChallenges"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1648,7 +1648,7 @@ function BiasTab({
       <TabContainer>
         <TabSectionHeader title="Bias narrative" />
         <UnavailableInline
-          subCallKey="strategicOverview"
+          subCallKey="biasNarrative"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1736,7 +1736,7 @@ function ThemesTab({
       <TabContainer>
         <TabSectionHeader title="Trial themes" />
         <UnavailableInline
-          subCallKey="strategicOverview"
+          subCallKey="trialThemes"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1846,7 +1846,7 @@ function DiscoveryGapsTab({
       <TabContainer>
         <TabSectionHeader title="Discovery gaps" />
         <UnavailableInline
-          subCallKey="motionsDiscovery"
+          subCallKey="discoveryGaps"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -1922,7 +1922,7 @@ function MissedTab({
       <TabContainer>
         <TabSectionHeader title="What we missed" />
         <UnavailableInline
-          subCallKey="retrospective"
+          subCallKey="whatWeMessedUp"
           onRerunFailed={onRerunFailed}
           block
         />
@@ -2024,7 +2024,7 @@ function NextTab({
       <TabContainer>
         <TabSectionHeader title="What to do next" />
         <UnavailableInline
-          subCallKey="retrospective"
+          subCallKey="whatToDoNext"
           onRerunFailed={onRerunFailed}
           block
         />
