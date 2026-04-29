@@ -562,7 +562,7 @@ export function MatterSynthesisView({
 
       {/* Active tab content (screen) */}
       <main className="print:hidden">
-        <div className="max-w-[1100px] mx-auto py-10">
+        <div className="px-6 py-12">
           <div key={currentTab}>{renderTab(currentTab)}</div>
         </div>
       </main>
